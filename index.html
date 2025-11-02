@@ -3,252 +3,236 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Visor 3D AR - Modo Cámara Fija</title>
+    <title>Visor AR con Rastreo Rotacional</title>
     
     <!-- Scripts de Tailwind, Three.js y OrbitControls -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <!-- Incluir OrbitControls y GLTFLoader desde un CDN estable -->
+    <!-- Incluir DeviceOrientationControls para facilitar el uso de sensores de movimiento -->
     <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/Duck/glTF/Duck.gltf"></script>
     <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/GLTFLoader.js"></script>
-    
-    <!-- Fuente Inter y Lucide Icons (para los iconos de los botones) -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Usaremos DeviceOrientationControls para manejar la rotación de la cámara (no OrbitControls) -->
+    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/DeviceOrientationControls.js"></script>
+
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <style>
-        /* Base styles and custom scrollbar for minimalist theme */
+        /* Estilos base y scrollbar para minimalismo/glassmorphism */
         body {
-            font-family: 'Inter', sans-serif;
+            font-family: 'Poppins', sans-serif;
             background-color: #f7f3ed; 
             color: #3b4233;
             overflow: hidden;
-            touch-action: none; /* Prevenir el comportamiento de arrastre nativo del navegador */
+            touch-action: none;
         }
-        
-        /* Contenedor de la alimentación de la cámara */
-        #camera-feed {
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 10; /* Canvas encima del video */
+        }
+        .video-background {
             position: fixed;
             top: 0;
             left: 0;
-            width: 100vw;
-            height: 100vh;
-            object-fit: cover; /* Asegura que cubra toda la pantalla sin distorsión */
-            z-index: 5; /* Detrás del canvas 3D */
-            pointer-events: none; /* No bloquear interacciones */
-        }
-
-        /* Contenedor del Canvas para Full Screen */
-        #canvas-container {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            z-index: 10; /* Encima del video */
-        }
-
-        /* Estilos del Panel de Control deslizante */
-        #control-panel {
-            position: fixed;
-            top: 0;
-            right: 0;
-            width: 300px;
+            width: 100%;
             height: 100%;
-            background-color: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(8px);
-            box-shadow: -8px 0 16px rgba(0, 0, 0, 0.1);
-            transform: translateX(100%);
-            transition: transform 0.3s ease-in-out;
-            z-index: 50;
-            padding: 1rem;
-            overflow-y: auto;
+            object-fit: cover;
+            z-index: 5; /* Video detrás del canvas */
+            display: none;
         }
-
+        .glass-panel {
+            backdrop-filter: blur(10px) saturate(180%);
+            background-color: rgba(255, 255, 255, 0.75);
+            border: 1px solid rgba(255, 255, 255, 0.125);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        }
+        /* Estilo para el panel de control deslizable */
+        #control-panel {
+            transition: transform 0.3s ease-in-out;
+            transform: translateX(100%);
+        }
         #control-panel.is-visible {
             transform: translateX(0);
         }
-
-        /* Estilos para el botón de menú flotante */
-        .menu-toggle-button {
-            position: fixed;
-            top: 1rem;
-            right: 1rem;
-            z-index: 60;
-            background-color: #4b5563;
-            color: white;
-            border-radius: 9999px;
-            padding: 0.75rem;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            transition: all 0.2s;
+        .btn-base {
+            @apply px-4 py-2 rounded-lg font-semibold transition duration-300 transform hover:scale-[1.03] active:scale-[0.98];
         }
-
-        .menu-toggle-button:hover {
-            background-color: #1f2937;
-            transform: scale(1.05);
+        .btn-primary {
+            @apply btn-base bg-indigo-600 text-white shadow-lg hover:bg-indigo-700;
         }
-        
-        /* Estilos para el botón de Modo AR, posicionado abajo a la izquierda */
-        #ar-camera-mode-button {
-            position: fixed;
-            bottom: 1rem;
-            left: 1rem;
-            z-index: 60;
-            padding: 0.75rem 1.5rem;
-            border-radius: 9999px;
-            font-weight: 600;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
+        .btn-secondary {
+            @apply btn-base bg-gray-200 text-gray-800 shadow-sm hover:bg-gray-300;
         }
-
-        #ar-camera-mode-button.active {
-            background-color: #ef4444; /* Rojo para ON */
-            color: white;
-        }
-
-        #ar-camera-mode-button.inactive {
-            background-color: #10b981; /* Verde para OFF */
-            color: white;
-        }
-        
-        #ar-camera-mode-button:hover {
-            opacity: 0.9;
-            transform: translateY(-2px);
-        }
-        
     </style>
 </head>
-<body>
+<body class="bg-gray-100 antialiased">
 
-    <!-- Video Elemento para la Alimentación de la Cámara (Inicialmente oculto) -->
-    <video id="camera-feed" playsinline autoplay muted class="hidden"></video>
+    <!-- Video Element for Camera Pass-Through (Oculto por defecto) -->
+    <video id="video-feed" class="video-background" autoplay playsinline></video>
 
-    <!-- Contenedor del Canvas Three.js -->
-    <div id="canvas-container"></div>
+    <!-- Contenedor del Canvas 3D (Se llenará con JavaScript) -->
+    <div id="three-container"></div>
 
-    <!-- Botón Flotante para Modo Cámara AR -->
-    <button id="ar-camera-mode-button" class="inactive" onclick="toggleARCameraMode()">
-        <span id="ar-status-text">Activar Modo Cámara AR</span>
-        <i data-lucide="scan-face" class="w-5 h-5 ml-2"></i>
+    <!-- Botón para Abrir Panel de Control (Siempre visible) -->
+    <button id="menu-icon" class="fixed top-4 right-4 z-40 p-3 bg-indigo-600 text-white rounded-full shadow-lg transition-transform hover:scale-105" onclick="toggleControlPanel()">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
     </button>
 
-    <!-- Botón de Menú Flotante -->
-    <button class="menu-toggle-button" onclick="toggleControlPanel()">
-        <i id="menu-icon" data-lucide="settings" class="w-6 h-6"></i>
-        <i id="close-icon" data-lucide="x" class="w-6 h-6 hidden"></i>
-    </button>
-
-    <!-- Panel de Control Deslizante (Oculto por defecto) -->
-    <div id="control-panel" class="p-4 flex flex-col space-y-4">
-        <h2 class="text-2xl font-bold border-b pb-2 text-gray-700">Controles 3D</h2>
-
-        <!-- Selector de Modelo -->
-        <div class="space-y-2">
-            <label class="block font-medium text-sm">Modelo Actual:</label>
-            <div id="current-model" class="text-lg font-semibold text-indigo-600">Duck</div>
-            <button onclick="toggleModelSelector(true)" class="w-full bg-indigo-500 hover:bg-indigo-600 text-white p-2 rounded-lg shadow-md transition duration-200">
-                Cambiar Modelo
-            </button>
-        </div>
-
-        <!-- Controles de Colocación (Rotación/Movimiento) -->
-        <div id="placement-controls" class="space-y-2 pt-4 border-t">
-            <label class="block font-medium text-sm">Control de Interacción:</label>
-            <button id="lock-toggle" onclick="toggleModelLock()" class="w-full bg-gray-600 hover:bg-gray-700 text-white p-2 rounded-lg shadow-md transition duration-200">
-                <span id="lock-status" class="font-bold">OFF (Rotar)</span>
-            </button>
-            <p class="text-xs text-gray-500 mt-1">
-                Alterna entre **Rotar** el modelo (por defecto) o **Moverlo** en el plano.
-            </p>
-        </div>
+    <!-- Panel de Control (Glassmorphism) -->
+    <div id="control-panel" class="fixed top-0 right-0 h-full w-full md:w-80 z-50 p-6 glass-panel overflow-y-auto">
         
-        <!-- Controles de Escala (Escala/Zoom) -->
-        <div class="space-y-2 pt-4 border-t">
-             <label for="scale-slider" class="block font-medium text-sm">Escala del Modelo (<span id="scale-value">1.0</span>)</label>
-             <input type="range" id="scale-slider" min="0.1" max="5" value="1" step="0.1" 
-                    oninput="scaleModel(this.value)" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
-        </div>
-        
-        <!-- Botón de Reinicio -->
-        <button onclick="resetScene()" class="w-full bg-red-500 hover:bg-red-600 text-white p-2 rounded-lg shadow-md transition duration-200 mt-4">
-            Reiniciar Posición y Escala
+        <!-- Icono de Cerrar Panel -->
+        <button id="close-icon" class="absolute top-4 right-4 p-2 text-gray-600 rounded-full hover:bg-gray-200" onclick="toggleControlPanel()">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
         </button>
-    </div>
+        
+        <h2 class="text-2xl font-bold mb-6 text-indigo-800 pt-8 md:pt-0">Controles de Visor 3D</h2>
 
-    <!-- Modal de Selección de Modelos (Inicialmente oculto) -->
-    <div id="model-selector-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-[100] flex justify-center items-center p-4" onclick="toggleModelSelector(false)">
-        <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-md" onclick="event.stopPropagation()">
-            <h3 class="text-xl font-bold mb-4">Seleccionar Modelo 3D</h3>
-            <div class="grid grid-cols-2 gap-4">
-                <button onclick="selectModel('Duck'); toggleModelSelector(false);" class="p-3 bg-blue-100 text-blue-800 rounded-lg hover:bg-blue-200 transition">Pato (Duck)</button>
-                <button onclick="selectModel('BoomBox'); toggleModelSelector(false);" class="p-3 bg-green-100 text-green-800 rounded-lg hover:bg-green-200 transition">BoomBox</button>
-                <button onclick="selectModel('Suzanne'); toggleModelSelector(false);" class="p-3 bg-purple-100 text-purple-800 rounded-lg hover:bg-purple-200 transition">Suzanne (Mono)</button>
-                <button onclick="selectModel('DamagedHelmet'); toggleModelSelector(false);" class="p-3 bg-yellow-100 text-yellow-800 rounded-lg hover:bg-yellow-200 transition">Casco</button>
+        <!-- Sección de Modelos -->
+        <div class="mb-6">
+            <h3 class="font-semibold mb-2">Modelo Actual: <span id="current-model" class="text-indigo-600">Duck</span></h3>
+            <button class="btn-secondary w-full" onclick="toggleModelSelector(true)">Cambiar Modelo</button>
+        </div>
+
+        <!-- Sección de Modo Interacción -->
+        <div class="mb-6">
+            <h3 class="font-semibold mb-2">Modo Interacción:</h3>
+            <p class="text-sm text-gray-600 mb-2">Actual: <span id="lock-status" class="font-medium text-gray-900">OFF (Rotar)</span></p>
+            <button class="btn-primary w-full" onclick="toggleInteractionMode()">Alternar (Rotar/Mover)</button>
+        </div>
+
+        <!-- Modo Pared/AR -->
+        <div class="mb-6 border-t pt-4 border-gray-300">
+            <h3 class="font-bold text-lg mb-3 text-red-600">MODO PARED (AR Simulado)</h3>
+            
+            <p class="text-sm text-gray-600 mb-2">Estado: <span id="ar-mode-status" class="font-medium text-gray-900">Inactivo</span></p>
+
+            <!-- Botón para iniciar la cámara -->
+            <button id="toggle-ar-mode-btn" class="btn-base w-full bg-red-500 text-white hover:bg-red-600" onclick="toggleARMode()">
+                Activar Cámara y AR
+            </button>
+        </div>
+
+        <!-- Controles de Posicionamiento (Ajuste fino de AR) -->
+        <div id="placement-controls" class="space-y-4 pt-4 border-t border-gray-300 hidden">
+            <h3 class="font-semibold text-gray-800">Ajuste de Posición Fina</h3>
+            
+            <!-- Rastreo de Rotación (Nuevo Botón) -->
+            <div class="pt-2">
+                <h4 class="font-medium text-sm mb-1">Rastreo de Movimiento:</h4>
+                <button id="toggle-motion-btn" class="btn-base w-full bg-green-500 text-white hover:bg-green-600" onclick="toggleMotionTracking(true)">
+                    Activar Rastreo de Rotación
+                </button>
+                <p class="text-xs mt-1 text-gray-500">Mantiene el modelo fijo en la pared al mover el teléfono.</p>
             </div>
-            <button onclick="toggleModelSelector(false)" class="mt-4 w-full bg-gray-300 hover:bg-gray-400 text-gray-800 p-2 rounded-lg">Cerrar</button>
+
+            <!-- Slider X -->
+            <div>
+                <label for="ar-x-slider" class="block text-sm font-medium text-gray-700">Posición Horizontal (X): <span id="ar-x-value">0.0</span></label>
+                <input type="range" id="ar-x-slider" min="-5" max="5" value="0" step="0.1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" oninput="updateModelPlacement()">
+            </div>
+            <!-- Slider Y -->
+            <div>
+                <label for="ar-y-slider" class="block text-sm font-medium text-gray-700">Posición Vertical (Y): <span id="ar-y-value">0.0</span></label>
+                <input type="range" id="ar-y-slider" min="-5" max="5" value="0" step="0.1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" oninput="updateModelPlacement()">
+            </div>
+            <!-- Slider Z (Rotación) -->
+            <div>
+                <label for="ar-z-slider" class="block text-sm font-medium text-gray-700">Rotación (Inclinación Z): <span id="ar-z-value">0.0</span>°</label>
+                <input type="range" id="ar-z-slider" min="-180" max="180" value="0" step="1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" oninput="updateModelPlacement()">
+            </div>
+
+            <!-- Control de Escala -->
+            <div class="pt-4 border-t border-gray-300">
+                <h4 class="font-semibold text-gray-800 mb-2">Escala del Modelo</h4>
+                <div class="flex space-x-2">
+                    <button class="btn-secondary flex-1" onclick="adjustScale(-0.1)">Reducir</button>
+                    <button class="btn-secondary flex-1" onclick="adjustScale(0.1)">Aumentar</button>
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- Alerta de Mensaje Personalizada -->
-    <div id="alert-box" class="fixed top-5 left-1/2 transform -translate-x-1/2 p-4 rounded-xl shadow-lg transition-all duration-300 opacity-0 pointer-events-none z-50 bg-white">
-        <div id="alert-message" class="font-medium text-sm text-gray-800"></div>
+    <!-- Modal para Selección de Modelo -->
+    <div id="model-selector-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-300">
+        <div class="bg-white rounded-xl p-8 shadow-2xl w-full max-w-sm">
+            <h3 class="text-xl font-bold mb-4">Seleccionar Modelo GLTF</h3>
+            <div class="space-y-3">
+                <button class="btn-secondary w-full" onclick="selectModel('Duck')">Duck</button>
+                <button class="btn-secondary w-full" onclick="selectModel('Helmet')">Helmet</button>
+                <button class="btn-secondary w-full" onclick="selectModel('BoomBox')">BoomBox</button>
+            </div>
+            <button class="mt-6 btn-primary w-full" onclick="toggleModelSelector(false)">Cerrar</button>
+        </div>
+    </div>
+
+    <!-- Caja de Alerta Personalizada (Reemplazo de alert()) -->
+    <div id="custom-alert" class="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-6 py-3 rounded-lg shadow-xl text-white bg-indigo-600 opacity-0 pointer-events-none transition-opacity duration-300">
+        <span id="alert-message"></span>
     </div>
 
     <script type="module">
-        // Inicializar iconos de Lucide
-        lucide.createIcons();
-    </script>
-
-    <script>
-        // --- Variables Globales de Three.js y Cámara ---
+        // Variables globales de Three.js
         let scene, camera, renderer, controls, gltfLoader;
-        let loadedModel = null;
+        let modelContainer, currentModel;
         let isPanelVisible = false;
-        let isMoveMode = false; // Estado para alternar entre rotar/mover
+        let isARMode = false;
+        let isMotionTrackingActive = false;
+        let deviceOrientationControls; // Nuevo control para la AR
+        let alertTimeout;
+        const videoElement = document.getElementById('video-feed');
         
-        // Variables para la cámara de vídeo
-        let videoElement;
-        let cameraStream = null;
-
-        // --- Variables para el Modo Cámara AR ---
-        let isARCameraMode = false;
-        let arFixedPosition = new THREE.Vector3(0, 0, 0); // Posición donde se 'fija' el modelo
-        let originalControlsTarget = new THREE.Vector3(0, 0, 0); // Guardar el target original de OrbitControls
-
-        // --- Modelos de Ejemplo ---
-        const models = {
-            'Duck': 'https://cdn.rawgit.com/mrdoob/three.js/r128/examples/models/gltf/Duck/glTF/Duck.gltf',
-            'BoomBox': 'https://cdn.rawgit.com/mrdoob/three.js/r128/examples/models/gltf/BoomBox/glTF/BoomBox.gltf',
-            'Suzanne': 'https://cdn.rawgit.com/mrdoob/three.js/r128/examples/models/gltf/Suzanne.glb',
-            'DamagedHelmet': 'https://cdn.rawgit.com/mrdoob/three.js/r128/examples/models/gltf/DamagedHelmet/glTF/DamagedHelmet.gltf'
+        // Configuración de Modelos (URLs de ejemplos de Three.js)
+        const MODELS = {
+            Duck: 'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/Duck/glTF/Duck.gltf',
+            Helmet: 'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf',
+            BoomBox: 'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/BoomBox/glTF/BoomBox.gltf'
         };
 
-        // --- Alertas Personalizadas (Custom Alerts) ---
-        let alertTimeout;
-        function showMessage(message, type = 'info') {
-            clearTimeout(alertTimeout);
-            const alertBox = document.getElementById('alert-box');
-            const alertMessage = document.getElementById('alert-message');
+        // --- FUNCIONES DE INTERFAZ Y UTILIDAD ---
 
-            // Limpiar clases de color
-            alertBox.classList.remove('bg-red-100', 'bg-green-100', 'bg-white');
-            alertMessage.classList.remove('text-red-800', 'text-green-800', 'text-gray-800');
+        window.toggleControlPanel = function() {
+            const panel = document.getElementById('control-panel');
+            const menuIcon = document.getElementById('menu-icon');
+            const closeIcon = document.getElementById('close-icon');
 
-            // Establecer color según el tipo
-            if (type === 'error') {
-                alertBox.classList.add('bg-red-100');
-                alertMessage.classList.add('text-red-800');
-            } else if (type === 'success') {
-                alertBox.classList.add('bg-green-100');
-                alertMessage.classList.add('text-green-800');
-            } else { // info
-                alertBox.classList.add('bg-white');
-                alertMessage.classList.add('text-gray-800');
+            isPanelVisible = !isPanelVisible;
+
+            if (isPanelVisible) {
+                panel.classList.add('is-visible');
+                menuIcon.classList.add('hidden');
+                closeIcon.classList.remove('hidden');
+            } else {
+                panel.classList.remove('is-visible');
+                menuIcon.classList.remove('hidden');
+                closeIcon.classList.add('hidden');
             }
+        };
 
-            alertMessage.innerHTML = message;
+        window.toggleModelSelector = function(show) {
+            const modal = document.getElementById('model-selector-modal');
+            if (show) {
+                modal.classList.remove('pointer-events-none', 'opacity-0');
+                modal.classList.add('opacity-100');
+            } else {
+                modal.classList.remove('opacity-100');
+                modal.classList.add('pointer-events-none', 'opacity-0');
+            }
+        };
+
+        window.showAlert = function(message) {
+            clearTimeout(alertTimeout);
+            const alertBox = document.getElementById('custom-alert');
+            document.getElementById('alert-message').textContent = message;
 
             // Mostrar
             alertBox.classList.remove('opacity-0', 'pointer-events-none');
@@ -261,111 +245,54 @@
             }, 3000);
         }
 
-        // --- Lógica de la Cámara de Vídeo ---
-        async function startCamera() {
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                showMessage("Tu navegador no soporta la API de MediaDevices (cámara).", 'error');
-                return;
-            }
+        // --- FUNCIONES DE TRES.JS ---
 
-            try {
-                // Preferir la cámara trasera ('environment') si está disponible
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { 
-                        facingMode: "environment" 
-                    } 
-                });
-                
-                cameraStream = stream;
-                videoElement.srcObject = stream;
-                videoElement.play();
-                videoElement.classList.remove('hidden');
-                
-                // Asegurar que el renderer sea transparente para ver el vídeo
-                renderer.setClearColor(0x000000, 0); 
-                
-                showMessage("Cámara activada. Fondo de Realidad Aumentada visible.", 'success');
-            } catch (err) {
-                console.error("Error al acceder a la cámara:", err);
-                // Si falla la cámara trasera, intentar la frontal
-                try {
-                     const stream = await navigator.mediaDevices.getUserMedia({ 
-                        video: { 
-                            facingMode: "user" 
-                        } 
-                    });
-                    
-                    cameraStream = stream;
-                    videoElement.srcObject = stream;
-                    videoElement.play();
-                    videoElement.classList.remove('hidden');
-                    renderer.setClearColor(0x000000, 0); 
-                    showMessage("Cámara frontal activada (Cámara trasera no disponible).", 'success');
-
-                } catch (err) {
-                    showMessage("No se pudo acceder a ninguna cámara. Revisa permisos.", 'error');
-                }
-            }
-        }
-
-        function stopCamera() {
-            if (cameraStream) {
-                cameraStream.getTracks().forEach(track => track.stop());
-                cameraStream = null;
-            }
-            videoElement.classList.add('hidden');
-            
-            // Restaurar el color de fondo de la escena para el modo 3D normal
-            renderer.setClearColor(0xd2c7b5, 1); 
-            showMessage("Cámara desactivada. Fondo de escena restaurado.", 'info');
-        }
-
-        // --- Configuración de Three.js (Init) ---
         function initThree() {
-            // SCENE
+            // 1. Scene
             scene = new THREE.Scene();
             
-            // CAMERA
+            // 2. Camera (usar un campo de visión más amplio para AR)
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 1.5, 3); // Posición inicial más realista
-
-            // RENDERER
-            // IMPORTANTE: Habilitar 'alpha: true' para permitir transparencia
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); 
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.outputEncoding = THREE.sRGBEncoding;
-            renderer.shadowMap.enabled = true;
             
-            // Canvas transparente por defecto, aunque se ajusta en toggleARCameraMode
-            renderer.setClearColor(0x000000, 0); 
+            // CORRECCIÓN AR: La cámara debe comenzar en el origen (0, 0, 0) para que el modelo
+            // colocado en Z negativo esté delante de ella.
+            camera.position.set(0, 0, 0); 
+            camera.updateProjectionMatrix();
 
-            document.getElementById('canvas-container').appendChild(renderer.domElement);
+            // 3. Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(0x3b4233, 1); // Fondo por defecto
+            document.getElementById('three-container').appendChild(renderer.domElement);
 
-            // LIGHTS (Iluminación suave)
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+            // 4. Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
             scene.add(ambientLight);
-
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
             directionalLight.position.set(5, 5, 5);
-            directionalLight.castShadow = true;
             scene.add(directionalLight);
 
-            // CONTROLS (OrbitControls para interacción de cámara)
+            // 5. Controls (OrbitControls por defecto para el modo Rotar)
             controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true; 
-            controls.dampingFactor = 0.05;
-            controls.screenSpacePanning = false; 
-            controls.minDistance = 0.5;
-            controls.maxDistance = 10;
-            controls.target.set(0, 0, 0); 
-            originalControlsTarget.copy(controls.target); 
+            controls.enableDamping = true;
+            // Ajustamos el target para que el OrbitControls mire hacia la posición inicial del modelo
+            controls.target.set(0, 0, -2); 
+            controls.update(); 
+            
+            // 6. Model Container (un grupo vacío para manipular el modelo)
+            modelContainer = new THREE.Group();
+            scene.add(modelContainer);
 
-            // LOADER
+            // 7. Loaders
             gltfLoader = new THREE.GLTFLoader();
-
-            // RESIZE HANDLING
+            
+            // 8. Resizing
             window.addEventListener('resize', onWindowResize, false);
+            onWindowResize(); // Llamar inicialmente para establecer el tamaño
+
+            // 9. Initializing Device Orientation Controls
+            deviceOrientationControls = new THREE.DeviceOrientationControls(camera);
         }
 
         function onWindowResize() {
@@ -374,224 +301,329 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        // --- Lógica de Carga de Modelo ---
-        function selectModel(modelName) {
-            if (loadedModel) {
-                scene.remove(loadedModel);
-                loadedModel = null;
-            }
-
-            const url = models[modelName];
-            if (!url) {
-                showMessage(`Error: URL de modelo no encontrada para ${modelName}`, 'error');
-                return;
-            }
-
-            document.getElementById('current-model').textContent = modelName;
-            showMessage(`Cargando modelo: ${modelName}...`);
-
-            gltfLoader.load(url, (gltf) => {
-                loadedModel = gltf.scene;
-                
-                // Normalizar la escala del modelo
-                const box = new THREE.Box3().setFromObject(loadedModel);
-                const size = box.getSize(new THREE.Vector3());
-                const maxDim = Math.max(size.x, size.y, size.z);
-                const scale = 1.0 / maxDim; // Escalar para que la dimensión más grande sea 1 unidad
-                loadedModel.scale.set(scale, scale, scale);
-                
-                // Centrar el modelo
-                box.setFromObject(loadedModel);
-                box.getCenter(loadedModel.position).multiplyScalar(-1);
-                
-                // Posicionar en el centro de la escena (0,0,0) y levantarlo si es necesario
-                loadedModel.position.set(0, 0, 0); 
-                
-                scene.add(loadedModel);
-                
-                // Si el Modo AR está activo, fijar el target inmediatamente al cargar el nuevo modelo
-                if (isARCameraMode) {
-                    arFixedPosition.copy(loadedModel.position);
-                    controls.target.copy(arFixedPosition);
-                    controls.update();
-                } else {
-                    // Si el modo AR está inactivo, asegurar que el control apunte al origen
-                    controls.target.copy(originalControlsTarget);
-                    controls.update();
-                }
-
-                // Restablecer la escala del slider
-                document.getElementById('scale-slider').value = 1.0;
-                document.getElementById('scale-value').textContent = '1.0';
-
-                showMessage(`Modelo '${modelName}' cargado y listo.`, 'success');
-            }, undefined, (error) => {
-                console.error(error);
-                showMessage(`Error al cargar el modelo: ${modelName}.`, 'error');
-            });
-        }
-        
-        // --- Lógica de Interfaz y Controles ---
-        
-        function toggleControlPanel() {
-            isPanelVisible = !isPanelVisible;
-            document.getElementById('control-panel').classList.toggle('is-visible', isPanelVisible);
-            document.getElementById('menu-icon').classList.toggle('hidden', isPanelVisible);
-            document.getElementById('close-icon').classList.toggle('hidden', !isPanelVisible);
-        }
-
-        function toggleModelSelector(show) {
-            document.getElementById('model-selector-modal').classList.toggle('hidden', !show);
-        }
-
-        function scaleModel(value) {
-            const scale = parseFloat(value);
-            document.getElementById('scale-value').textContent = scale.toFixed(1);
-            if (loadedModel) {
-                loadedModel.scale.set(scale, scale, scale);
-            }
-        }
-        
-        function resetScene() {
-            if (loadedModel) {
-                // Reiniciar posición (lo hace la función de carga, pero para ser explícitos)
-                loadedModel.position.set(0, 0, 0);
-                
-                // Reiniciar escala a 1.0 
-                const scaleValue = 1.0;
-                loadedModel.scale.set(scaleValue, scaleValue, scaleValue);
-
-                // Reiniciar OrbitControls
-                controls.reset();
-                
-                // Actualizar sliders y estados
-                document.getElementById('scale-slider').value = 1.0;
-                document.getElementById('scale-value').textContent = '1.0';
-                
-                isMoveMode = false;
-                document.getElementById('lock-status').textContent = 'OFF (Rotar)';
-
-                // Si Modo AR estaba activo, se debe actualizar la posición fija
-                if (isARCameraMode) {
-                    arFixedPosition.copy(loadedModel.position);
-                    controls.target.copy(arFixedPosition);
-                } else {
-                    controls.target.copy(originalControlsTarget);
-                }
-                controls.update();
-
-                showMessage("Escena y controles reiniciados.", 'info');
-            }
-        }
-
-        function toggleModelLock() {
-            if (!loadedModel) {
-                 showMessage("Primero carga un modelo 3D.", 'info');
-                 return;
-            }
-
-            if (isARCameraMode) {
-                // Desactivar el control de colocación si el modo AR está activo, para evitar conflictos
-                showMessage("Desactiva el Modo Cámara AR para usar los controles de Rotar/Mover.", 'info');
-                return;
-            }
-
-            isMoveMode = !isMoveMode;
-            
-            if (isMoveMode) {
-                document.getElementById('lock-status').textContent = 'ON (Mover)';
-                // En modo mover: solo permite panear la cámara, para mover el modelo en el plano (XZ)
-                controls.enableRotate = false; 
-                controls.enablePan = true;    
-                controls.mouseButtons.LEFT = THREE.MOUSE.PAN; 
-                controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE; 
-                showMessage("Modo Mover: El modelo se mueve con el arrastre del mouse/touch.", 'info');
-            } else {
-                document.getElementById('lock-status').textContent = 'OFF (Rotar)';
-                // En modo rotar: permite rotar la cámara alrededor del target (el modelo)
-                controls.enableRotate = true;  
-                controls.enablePan = true;    
-                controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE; 
-                controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;   
-                showMessage("Modo Rotar: La cámara rota alrededor del modelo.", 'info');
-            }
-        }
-        
-        // --- Lógica del Modo Cámara AR ---
-        function toggleARCameraMode() {
-            if (!loadedModel) {
-                showMessage("Primero carga un modelo 3D para activar el Modo Cámara AR.", 'info');
-                return;
-            }
-            
-            isARCameraMode = !isARCameraMode;
-            const button = document.getElementById('ar-camera-mode-button');
-            const statusText = document.getElementById('ar-status-text');
-
-            if (isARCameraMode) {
-                // 1. INICIAR LA CÁMARA y hacer el renderizador transparente
-                startCamera(); 
-                
-                // 2. FIJAR LA POSICIÓN DEL MODELO
-                arFixedPosition.copy(loadedModel.position); 
-                
-                // 3. FIJAR EL TARGET DE ORBITCONTROLS para simular un punto fijo en el espacio
-                controls.target.copy(arFixedPosition);
-                
-                // 4. Actualizar UI
-                button.classList.remove('inactive');
-                button.classList.add('active');
-                statusText.textContent = 'Desactivar Modo Cámara AR';
-                
-            } else {
-                // 1. DETENER LA CÁMARA y restaurar el color de fondo opaco (hecho en stopCamera)
-                stopCamera(); 
-                
-                // 2. DEVOLVER EL TARGET A SU POSICIÓN ORIGINAL
-                controls.target.copy(originalControlsTarget);
-                
-                // 3. Actualizar UI
-                button.classList.remove('active');
-                button.classList.add('inactive');
-                statusText.textContent = 'Activar Modo Cámara AR';
-            }
-            
-            controls.update();
-        }
-
-        // --- Bucle de Renderizado ---
         function animate() {
             requestAnimationFrame(animate);
-            
-            controls.update(); 
-            
-            // Si el modo AR está activo, forzamos que el modelo permanezca en su posición fija
-            if (isARCameraMode && loadedModel) {
-                loadedModel.position.copy(arFixedPosition);
-            }
-            
-            // Si el modo Mover (isMoveMode) está activo y el modo AR no lo está:
-            if (isMoveMode && !isARCameraMode && loadedModel) {
-                // Movemos el modelo para que siga al target de OrbitControls
-                loadedModel.position.copy(controls.target);
+
+            // Actualizar OrbitControls si están activos
+            if (controls.enabled) {
+                controls.update();
             }
 
+            // Actualizar DeviceOrientationControls si están activos
+            if (isMotionTrackingActive && deviceOrientationControls) {
+                deviceOrientationControls.update();
+            }
+            
             renderer.render(scene, camera);
         }
+
+        window.selectModel = function(modelName) {
+            document.getElementById('current-model').textContent = modelName;
+            window.toggleModelSelector(false); // Cerrar modal
+
+            if (currentModel) {
+                modelContainer.remove(currentModel);
+                currentModel.traverse(function(object) {
+                    if (object.isMesh) {
+                        if (object.material.dispose) object.material.dispose();
+                        if (object.geometry.dispose) object.geometry.dispose();
+                    }
+                });
+            }
+
+            showAlert(`Cargando modelo: ${modelName}...`);
+            gltfLoader.load(
+                MODELS[modelName],
+                function(gltf) {
+                    currentModel = gltf.scene;
+                    
+                    // Centrar y escalar el modelo
+                    const box = new THREE.Box3().setFromObject(currentModel);
+                    const center = box.getCenter(new THREE.Vector3());
+                    currentModel.position.sub(center); // Centrar el modelo en su origen
+                    
+                    const size = box.getSize(new THREE.Vector3());
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    const scaleFactor = 1.5 / maxDim; // Escalar para que sea visible
+                    currentModel.scale.set(scaleFactor, scaleFactor, scaleFactor);
+                    
+                    // Añadir al contenedor
+                    modelContainer.add(currentModel);
+                    showAlert(`Modelo ${modelName} cargado correctamente.`);
+                    
+                    // Aplicar la colocación actual
+                    updateModelPlacement();
+                },
+                undefined,
+                function(error) {
+                    console.error(error);
+                    showAlert(`Error al cargar el modelo: ${modelName}.`);
+                }
+            );
+        };
+        
+        window.toggleInteractionMode = function() {
+            if (controls.enabled) {
+                // Cambiar a Modo Mover
+                controls.enabled = false;
+                document.getElementById('lock-status').textContent = 'ON (Mover)';
+                renderer.domElement.addEventListener('pointerdown', onPointerDown, false);
+                showAlert('Modo Mover activado. Arrastra el modelo directamente.');
+            } else {
+                // Cambiar a Modo Rotar
+                controls.enabled = true;
+                document.getElementById('lock-status').textContent = 'OFF (Rotar)';
+                renderer.domElement.removeEventListener('pointerdown', onPointerDown, false);
+                renderer.domElement.removeEventListener('pointermove', onPointerMove, false);
+                renderer.domElement.removeEventListener('pointerup', onPointerUp, false);
+                showAlert('Modo Rotar activado. Usa los OrbitControls.');
+            }
+        };
+
+        // --- LÓGICA DE DRAG AND DROP DIRECTO (Modo Mover) ---
+        let dragObject = null;
+        const pointer = new THREE.Vector2();
+        const raycaster = new THREE.Raycaster();
+
+        function onPointerDown(event) {
+            pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+            pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(pointer, camera);
+
+            // Solo interactuar con el modelo actual (y sus hijos)
+            const intersects = raycaster.intersectObjects(currentModel.children, true);
+
+            if (intersects.length > 0) {
+                dragObject = modelContainer; // Arrastramos el contenedor, no el modelo interno
+                renderer.domElement.addEventListener('pointermove', onPointerMove, false);
+                renderer.domElement.addEventListener('pointerup', onPointerUp, false);
+                showAlert('Arrastrando modelo...');
+            }
+        }
+
+        function onPointerMove(event) {
+            if (dragObject) {
+                pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+                pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+                raycaster.setFromCamera(pointer, camera);
+
+                // Crear un plano imaginario donde se 'mueve' el objeto
+                const plane = new THREE.Plane(camera.position.clone().normalize(), 0);
+                const intersectionPoint = new THREE.Vector3();
+                
+                // Proyectar el rayo sobre el plano imaginario
+                if (raycaster.ray.intersectPlane(plane, intersectionPoint)) {
+                    // Simple movimiento de offset
+                    const deltaX = event.movementX * 0.005; 
+                    const deltaY = event.movementY * 0.005;
+                    dragObject.position.x += deltaX;
+                    dragObject.position.y -= deltaY;
+                    
+                    // Actualizar sliders (solo si no estamos en modo AR, para evitar conflictos)
+                    if (!isARMode) {
+                        document.getElementById('ar-x-slider').value = dragObject.position.x;
+                        document.getElementById('ar-y-slider').value = dragObject.position.y;
+                        document.getElementById('ar-x-value').textContent = dragObject.position.x.toFixed(1);
+                        document.getElementById('ar-y-value').textContent = dragObject.position.y.toFixed(1);
+                    }
+                }
+            }
+        }
+
+        function onPointerUp() {
+            dragObject = null;
+            renderer.domElement.removeEventListener('pointermove', onPointerMove, false);
+            renderer.domElement.removeEventListener('pointerup', onPointerUp, false);
+        }
+        
+        // --- LÓGICA DE AR (Modo Pared) ---
+        
+        window.startCameraPassThrough = async function() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'environment' // Cámara trasera
+                    } 
+                });
+                videoElement.srcObject = stream;
+                videoElement.style.display = 'block';
+                videoElement.play();
+                renderer.setClearColor(0x000000, 0); // Hacer el canvas transparente
+                renderer.domElement.style.zIndex = 10;
+                showAlert('Cámara activada.');
+                return true;
+            } catch (err) {
+                console.error("Error al acceder a la cámara:", err);
+                showAlert('Error: No se pudo acceder a la cámara. Asegúrate de tener permisos.');
+                return false;
+            }
+        };
+
+        window.stopCameraPassThrough = function() {
+            if (videoElement.srcObject) {
+                videoElement.srcObject.getTracks().forEach(track => track.stop());
+            }
+            videoElement.srcObject = null;
+            videoElement.style.display = 'none';
+            renderer.setClearColor(0x3b4233, 1); // Restablecer fondo por defecto
+            renderer.domElement.style.zIndex = 10;
+            showAlert('Cámara desactivada.');
+        };
+
+        window.toggleARMode = async function() {
+            isARMode = !isARMode;
+            const statusSpan = document.getElementById('ar-mode-status');
+            const controlsDiv = document.getElementById('placement-controls');
+            const toggleBtn = document.getElementById('toggle-ar-mode-btn');
+
+            if (isARMode) {
+                const success = await startCameraPassThrough();
+                if (success) {
+                    statusSpan.textContent = 'Activo';
+                    controlsDiv.classList.remove('hidden');
+                    toggleBtn.textContent = 'Desactivar Cámara y AR';
+                    toggleBtn.classList.remove('bg-red-500', 'hover:bg-red-600');
+                    toggleBtn.classList.add('bg-green-600', 'hover:bg-green-700');
+                    
+                    // Deshabilitar OrbitControls, solo usaremos AR
+                    controls.enabled = false;
+                    document.getElementById('lock-status').textContent = 'ON (Mover)';
+                    renderer.domElement.addEventListener('pointerdown', onPointerDown, false);
+                    
+                    // Activar el rastreo de movimiento por defecto al entrar en AR (Mejora la ilusión)
+                    toggleMotionTracking(true); 
+                } else {
+                    isARMode = false; // Falló la activación
+                }
+            } else {
+                stopCameraPassThrough();
+                statusSpan.textContent = 'Inactivo';
+                controlsDiv.classList.add('hidden');
+                toggleBtn.textContent = 'Activar Cámara y AR';
+                toggleBtn.classList.add('bg-red-500', 'hover:bg-red-600');
+                toggleBtn.classList.remove('bg-green-600', 'hover:bg-green-700');
+
+                // Restablecer OrbitControls
+                controls.enabled = true;
+                document.getElementById('lock-status').textContent = 'OFF (Rotar)';
+                renderer.domElement.removeEventListener('pointerdown', onPointerDown, false);
+                renderer.domElement.removeEventListener('pointermove', onPointerMove, false);
+                renderer.domElement.removeEventListener('pointerup', onPointerUp, false);
+                
+                // Desactivar rastreo de movimiento
+                toggleMotionTracking(false);
+            }
+        };
+
+        window.toggleMotionTracking = function(forceState) {
+            const motionBtn = document.getElementById('toggle-motion-btn');
+            
+            // Si se pasa un estado booleano, forzar ese estado. Si no, alternar.
+            isMotionTrackingActive = (typeof forceState === 'boolean') ? forceState : !isMotionTrackingActive;
+
+            if (!isARMode) {
+                showAlert('¡Primero debes activar el Modo Pared!');
+                isMotionTrackingActive = false;
+                return;
+            }
+
+            if (isMotionTrackingActive) {
+                // Pedir permiso y activar el rastreador de orientación
+                if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    DeviceOrientationEvent.requestPermission()
+                        .then(permissionState => {
+                            if (permissionState === 'granted') {
+                                window.addEventListener('deviceorientation', deviceOrientationControls.onDeviceOrientationChange, false);
+                                motionBtn.textContent = 'Desactivar Rastreo de Rotación';
+                                motionBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
+                                motionBtn.classList.add('bg-red-500', 'hover:bg-red-600');
+                                showAlert('Rastreo de Movimiento ACTIVADO. Mueve el teléfono.');
+                            } else {
+                                isMotionTrackingActive = false;
+                                showAlert('Permiso de orientación denegado.');
+                            }
+                        })
+                        .catch(error => {
+                            console.error("Error al solicitar permisos de DeviceOrientation:", error);
+                            isMotionTrackingActive = false;
+                            showAlert('Tu dispositivo no soporta el Rastreo de Movimiento.');
+                        });
+                } else {
+                    // Navegadores que no necesitan requestPermission (Android)
+                    window.addEventListener('deviceorientation', deviceOrientationControls.onDeviceOrientationChange, false);
+                    motionBtn.textContent = 'Desactivar Rastreo de Rotación';
+                    motionBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
+                    motionBtn.classList.add('bg-red-500', 'hover:bg-red-600');
+                    showAlert('Rastreo de Movimiento ACTIVADO. Mueve el teléfono.');
+                }
+            } else {
+                // Desactivar rastreo de orientación
+                window.removeEventListener('deviceorientation', deviceOrientationControls.onDeviceOrientationChange, false);
+                motionBtn.textContent = 'Activar Rastreo de Rotación';
+                motionBtn.classList.remove('bg-red-500', 'hover:bg-red-600');
+                motionBtn.classList.add('bg-green-500', 'hover:bg-green-600');
+                
+                // Limpiar la rotación de la cámara (para volver a la orientación original)
+                camera.rotation.set(0, 0, 0); 
+                camera.updateProjectionMatrix();
+
+                showAlert('Rastreo de Movimiento DESACTIVADO.');
+            }
+        };
+        
+        window.updateModelPlacement = function() {
+            if (!modelContainer) return;
+
+            const x = parseFloat(document.getElementById('ar-x-slider').value);
+            const y = parseFloat(document.getElementById('ar-y-slider').value);
+            const zRot = parseFloat(document.getElementById('ar-z-slider').value) * (Math.PI / 180);
+
+            // Actualizar la posición y rotación del contenedor del modelo
+            // Z=-2 lo coloca 2 unidades delante de la cámara (que está en 0, 0, 0)
+            modelContainer.position.set(x, y, -2); 
+            modelContainer.rotation.z = zRot;
+            
+            // Actualizar valores de la UI
+            document.getElementById('ar-x-value').textContent = x.toFixed(1);
+            document.getElementById('ar-y-value').textContent = y.toFixed(1);
+            document.getElementById('ar-z-value').textContent = (zRot * (180 / Math.PI)).toFixed(0);
+        };
+        
+        window.adjustScale = function(delta) {
+            if (currentModel) {
+                currentModel.scale.x += delta;
+                currentModel.scale.y += delta;
+                currentModel.scale.z += delta;
+                
+                // Asegurar que la escala no sea negativa
+                currentModel.scale.x = Math.max(0.1, currentModel.scale.x);
+                currentModel.scale.y = Math.max(0.1, currentModel.scale.y);
+                currentModel.scale.z = Math.max(0.1, currentModel.scale.z);
+            }
+            showAlert(`Escala ajustada en ${delta.toFixed(1)}`);
+        };
 
 
         // --- Ejecución Principal ---
         window.onload = function() {
-            // Obtener referencia al elemento de video
-            videoElement = document.getElementById('camera-feed');
-
             initThree();
             selectModel('Duck'); // Cargar modelo por defecto
 
-            // Estado inicial de la UI
+            // Inicializar el modal de selección como oculto
             toggleModelSelector(false);
-            isMoveMode = false; 
+
+            // Ocultar controles de AR y establecer estado inicial
+            document.getElementById('placement-controls').classList.add('hidden'); 
+            isARMode = false;
+            document.getElementById('ar-mode-status').textContent = 'Inactivo';
+
+            // Inicializar estado de 'Mover Modelo' como OFF (Rotar)
+            controls.enabled = true; 
             document.getElementById('lock-status').textContent = 'OFF (Rotar)';
+            
+            // Establecer el estado inicial del panel como oculto y mostrar el icono de menú
             document.getElementById('control-panel').classList.remove('is-visible');
             document.getElementById('menu-icon').classList.remove('hidden');
             document.getElementById('close-icon').classList.add('hidden');
