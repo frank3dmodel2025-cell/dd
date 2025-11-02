@@ -20,13 +20,24 @@
         /* Base styles and custom scrollbar for minimalist theme */
         body {
             font-family: 'Inter', sans-serif;
-            /* Dejamos el fondo del body sin color explícito aquí, o con un color neutro */
             background-color: #f7f3ed; 
             color: #3b4233;
             overflow: hidden;
             touch-action: none; /* Prevenir el comportamiento de arrastre nativo del navegador */
         }
         
+        /* Contenedor de la alimentación de la cámara */
+        #camera-feed {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover; /* Asegura que cubra toda la pantalla sin distorsión */
+            z-index: 5; /* Detrás del canvas 3D */
+            pointer-events: none; /* No bloquear interacciones */
+        }
+
         /* Contenedor del Canvas para Full Screen */
         #canvas-container {
             position: fixed;
@@ -34,7 +45,7 @@
             left: 0;
             width: 100vw;
             height: 100vh;
-            z-index: 10;
+            z-index: 10; /* Encima del video */
         }
 
         /* Estilos del Panel de Control deslizante */
@@ -111,10 +122,13 @@
 </head>
 <body>
 
+    <!-- Video Elemento para la Alimentación de la Cámara (Inicialmente oculto) -->
+    <video id="camera-feed" playsinline autoplay muted class="hidden"></video>
+
     <!-- Contenedor del Canvas Three.js -->
     <div id="canvas-container"></div>
 
-    <!-- Botón Flotante para Modo Cámara AR (NUEVO) -->
+    <!-- Botón Flotante para Modo Cámara AR -->
     <button id="ar-camera-mode-button" class="inactive" onclick="toggleARCameraMode()">
         <span id="ar-status-text">Activar Modo Cámara AR</span>
         <i data-lucide="scan-face" class="w-5 h-5 ml-2"></i>
@@ -188,13 +202,17 @@
     </script>
 
     <script>
-        // --- Variables Globales de Three.js ---
+        // --- Variables Globales de Three.js y Cámara ---
         let scene, camera, renderer, controls, gltfLoader;
         let loadedModel = null;
         let isPanelVisible = false;
         let isMoveMode = false; // Estado para alternar entre rotar/mover
         
-        // --- Variables para el NUEVO Modo Cámara AR ---
+        // Variables para la cámara de vídeo
+        let videoElement;
+        let cameraStream = null;
+
+        // --- Variables para el Modo Cámara AR ---
         let isARCameraMode = false;
         let arFixedPosition = new THREE.Vector3(0, 0, 0); // Posición donde se 'fija' el modelo
         let originalControlsTarget = new THREE.Vector3(0, 0, 0); // Guardar el target original de OrbitControls
@@ -243,12 +261,69 @@
             }, 3000);
         }
 
+        // --- Lógica de la Cámara de Vídeo ---
+        async function startCamera() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                showMessage("Tu navegador no soporta la API de MediaDevices (cámara).", 'error');
+                return;
+            }
+
+            try {
+                // Preferir la cámara trasera ('environment') si está disponible
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: "environment" 
+                    } 
+                });
+                
+                cameraStream = stream;
+                videoElement.srcObject = stream;
+                videoElement.play();
+                videoElement.classList.remove('hidden');
+                
+                // Asegurar que el renderer sea transparente para ver el vídeo
+                renderer.setClearColor(0x000000, 0); 
+                
+                showMessage("Cámara activada. Fondo de Realidad Aumentada visible.", 'success');
+            } catch (err) {
+                console.error("Error al acceder a la cámara:", err);
+                // Si falla la cámara trasera, intentar la frontal
+                try {
+                     const stream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { 
+                            facingMode: "user" 
+                        } 
+                    });
+                    
+                    cameraStream = stream;
+                    videoElement.srcObject = stream;
+                    videoElement.play();
+                    videoElement.classList.remove('hidden');
+                    renderer.setClearColor(0x000000, 0); 
+                    showMessage("Cámara frontal activada (Cámara trasera no disponible).", 'success');
+
+                } catch (err) {
+                    showMessage("No se pudo acceder a ninguna cámara. Revisa permisos.", 'error');
+                }
+            }
+        }
+
+        function stopCamera() {
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+                cameraStream = null;
+            }
+            videoElement.classList.add('hidden');
+            
+            // Restaurar el color de fondo de la escena para el modo 3D normal
+            renderer.setClearColor(0xd2c7b5, 1); 
+            showMessage("Cámara desactivada. Fondo de escena restaurado.", 'info');
+        }
+
         // --- Configuración de Three.js (Init) ---
         function initThree() {
             // SCENE
             scene = new THREE.Scene();
-            // REMOVIDO: scene.background = new THREE.Color(0xd2c7b5); // Color de fondo suave
-            // La escena no tendrá color de fondo por defecto para permitir transparencia
             
             // CAMERA
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -262,7 +337,7 @@
             renderer.outputEncoding = THREE.sRGBEncoding;
             renderer.shadowMap.enabled = true;
             
-            // IMPORTANTE: Hacer el canvas de Three.js transparente por defecto
+            // Canvas transparente por defecto, aunque se ajusta en toggleARCameraMode
             renderer.setClearColor(0x000000, 0); 
 
             document.getElementById('canvas-container').appendChild(renderer.domElement);
@@ -278,13 +353,13 @@
 
             // CONTROLS (OrbitControls para interacción de cámara)
             controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true; // para un movimiento más suave
+            controls.enableDamping = true; 
             controls.dampingFactor = 0.05;
-            controls.screenSpacePanning = false; // Paneo solo horizontal/vertical
+            controls.screenSpacePanning = false; 
             controls.minDistance = 0.5;
             controls.maxDistance = 10;
-            controls.target.set(0, 0, 0); // Inicialmente centrado en el origen
-            originalControlsTarget.copy(controls.target); // Guardar el target original
+            controls.target.set(0, 0, 0); 
+            originalControlsTarget.copy(controls.target); 
 
             // LOADER
             gltfLoader = new THREE.GLTFLoader();
@@ -382,7 +457,7 @@
                 // Reiniciar posición (lo hace la función de carga, pero para ser explícitos)
                 loadedModel.position.set(0, 0, 0);
                 
-                // Reiniciar escala a 1.0 (o recalcular la escala base si fuera necesario, aquí asumimos 1.0)
+                // Reiniciar escala a 1.0 
                 const scaleValue = 1.0;
                 loadedModel.scale.set(scaleValue, scaleValue, scaleValue);
 
@@ -426,23 +501,23 @@
             if (isMoveMode) {
                 document.getElementById('lock-status').textContent = 'ON (Mover)';
                 // En modo mover: solo permite panear la cámara, para mover el modelo en el plano (XZ)
-                controls.enableRotate = false; // Desactiva la rotación
-                controls.enablePan = true;    // Activa el paneo (movimiento lateral)
-                controls.mouseButtons.LEFT = THREE.MOUSE.PAN; // Mover con click izquierdo
-                controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE; // Rotar con click derecho (opcional)
+                controls.enableRotate = false; 
+                controls.enablePan = true;    
+                controls.mouseButtons.LEFT = THREE.MOUSE.PAN; 
+                controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE; 
                 showMessage("Modo Mover: El modelo se mueve con el arrastre del mouse/touch.", 'info');
             } else {
                 document.getElementById('lock-status').textContent = 'OFF (Rotar)';
                 // En modo rotar: permite rotar la cámara alrededor del target (el modelo)
-                controls.enableRotate = true;  // Activa la rotación
-                controls.enablePan = true;    // Activa el paneo
-                controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE; // Rotar con click izquierdo
-                controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;   // Paneo con click derecho (opcional)
+                controls.enableRotate = true;  
+                controls.enablePan = true;    
+                controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE; 
+                controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;   
                 showMessage("Modo Rotar: La cámara rota alrededor del modelo.", 'info');
             }
         }
         
-        // --- Lógica del NUEVO Modo Cámara AR ---
+        // --- Lógica del Modo Cámara AR ---
         function toggleARCameraMode() {
             if (!loadedModel) {
                 showMessage("Primero carga un modelo 3D para activar el Modo Cámara AR.", 'info');
@@ -454,42 +529,31 @@
             const statusText = document.getElementById('ar-status-text');
 
             if (isARCameraMode) {
-                // Al activar, hacemos transparente la escena para que se vea el fondo
-                // Esto simula ver el mundo real detrás del modelo.
-                renderer.setClearColor(0x000000, 0); 
+                // 1. INICIAR LA CÁMARA y hacer el renderizador transparente
+                startCamera(); 
                 
-                // PASO 1: FIJAR LA POSICIÓN DEL MODELO
+                // 2. FIJAR LA POSICIÓN DEL MODELO
                 arFixedPosition.copy(loadedModel.position); 
                 
-                // PASO 2: FIJAR EL TARGET DE ORBITCONTROLS
+                // 3. FIJAR EL TARGET DE ORBITCONTROLS para simular un punto fijo en el espacio
                 controls.target.copy(arFixedPosition);
                 
-                // PASO 3: DESACTIVAR CONTROLES DE MOVIMIENTO DE MODELO
-                isMoveMode = false;
-                document.getElementById('lock-status').textContent = 'OFF (Rotar)';
-                controls.enableRotate = true;
-                controls.enablePan = true;
-                controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE; 
-                controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;  
-                
-                // Actualizar UI
+                // 4. Actualizar UI
                 button.classList.remove('inactive');
                 button.classList.add('active');
                 statusText.textContent = 'Desactivar Modo Cámara AR';
-                showMessage("Modo Cámara AR ACTIVADO. El fondo es transparente.", 'success');
                 
             } else {
-                // Al desactivar, restauramos el fondo de la escena para volver a la vista 3D normal
-                renderer.setClearColor(0xd2c7b5, 1); // Restaurar el color de fondo original (opaco)
+                // 1. DETENER LA CÁMARA y restaurar el color de fondo opaco (hecho en stopCamera)
+                stopCamera(); 
                 
-                // PASO 1: DEVOLVER EL TARGET A SU POSICIÓN ORIGINAL
+                // 2. DEVOLVER EL TARGET A SU POSICIÓN ORIGINAL
                 controls.target.copy(originalControlsTarget);
                 
-                // Actualizar UI
+                // 3. Actualizar UI
                 button.classList.remove('active');
                 button.classList.add('inactive');
                 statusText.textContent = 'Activar Modo Cámara AR';
-                showMessage("Modo Cámara AR DESACTIVADO. Fondo de escena restaurado.", 'info');
             }
             
             controls.update();
@@ -518,17 +582,16 @@
 
         // --- Ejecución Principal ---
         window.onload = function() {
+            // Obtener referencia al elemento de video
+            videoElement = document.getElementById('camera-feed');
+
             initThree();
             selectModel('Duck'); // Cargar modelo por defecto
 
-            // Inicializar el modal de selección como oculto
+            // Estado inicial de la UI
             toggleModelSelector(false);
-
-            // Inicializar el estado de 'Mover Modelo' como OFF (Rotar)
             isMoveMode = false; 
             document.getElementById('lock-status').textContent = 'OFF (Rotar)';
-            
-            // Establecer el estado inicial del panel como oculto y mostrar el icono de menú
             document.getElementById('control-panel').classList.remove('is-visible');
             document.getElementById('menu-icon').classList.remove('hidden');
             document.getElementById('close-icon').classList.add('hidden');
