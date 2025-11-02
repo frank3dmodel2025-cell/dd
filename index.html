@@ -20,6 +20,7 @@
         /* Base styles and custom scrollbar for minimalist theme */
         body {
             font-family: 'Inter', sans-serif;
+            /* Dejamos el fondo del body sin color explícito aquí, o con un color neutro */
             background-color: #f7f3ed; 
             color: #3b4233;
             overflow: hidden;
@@ -246,18 +247,24 @@
         function initThree() {
             // SCENE
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0xd2c7b5); // Color de fondo suave para simular un entorno físico
+            // REMOVIDO: scene.background = new THREE.Color(0xd2c7b5); // Color de fondo suave
+            // La escena no tendrá color de fondo por defecto para permitir transparencia
             
             // CAMERA
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.set(0, 1.5, 3); // Posición inicial más realista
 
             // RENDERER
-            renderer = new THREE.WebGLRenderer({ antialias: true });
+            // IMPORTANTE: Habilitar 'alpha: true' para permitir transparencia
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true }); 
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.outputEncoding = THREE.sRGBEncoding;
             renderer.shadowMap.enabled = true;
+            
+            // IMPORTANTE: Hacer el canvas de Three.js transparente por defecto
+            renderer.setClearColor(0x000000, 0); 
+
             document.getElementById('canvas-container').appendChild(renderer.domElement);
 
             // LIGHTS (Iluminación suave)
@@ -447,20 +454,19 @@
             const statusText = document.getElementById('ar-status-text');
 
             if (isARCameraMode) {
+                // Al activar, hacemos transparente la escena para que se vea el fondo
+                // Esto simula ver el mundo real detrás del modelo.
+                renderer.setClearColor(0x000000, 0); 
+                
                 // PASO 1: FIJAR LA POSICIÓN DEL MODELO
-                // Clonar la posición actual del modelo. Esta será la posición "fija" en el mundo.
                 arFixedPosition.copy(loadedModel.position); 
                 
                 // PASO 2: FIJAR EL TARGET DE ORBITCONTROLS
-                // El target de los controles se convierte en la posición del modelo.
-                // Esto hace que la cámara gire alrededor de ese punto fijo, simulando el AR.
                 controls.target.copy(arFixedPosition);
                 
-                // PASO 3: DESACTIVAR CONTROLES QUE PUEDEN MOVER EL MODELO
-                // Desactivamos el modo 'Mover' anterior para evitar conflictos
+                // PASO 3: DESACTIVAR CONTROLES DE MOVIMIENTO DE MODELO
                 isMoveMode = false;
                 document.getElementById('lock-status').textContent = 'OFF (Rotar)';
-                // Garantizamos que los controles sigan permitiendo movimiento de la cámara (rotar/panear)
                 controls.enableRotate = true;
                 controls.enablePan = true;
                 controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE; 
@@ -470,22 +476,20 @@
                 button.classList.remove('inactive');
                 button.classList.add('active');
                 statusText.textContent = 'Desactivar Modo Cámara AR';
-                showMessage("Modo Cámara AR ACTIVADO. El modelo está fijo, la cámara se mueve a su alrededor.", 'success');
+                showMessage("Modo Cámara AR ACTIVADO. El fondo es transparente.", 'success');
                 
             } else {
-                // PASO 1: DEVOLVER EL TARGET A SU POSICIÓN ORIGINAL
-                // El target vuelve al origen para una vista 3D estándar.
-                controls.target.copy(originalControlsTarget);
+                // Al desactivar, restauramos el fondo de la escena para volver a la vista 3D normal
+                renderer.setClearColor(0xd2c7b5, 1); // Restaurar el color de fondo original (opaco)
                 
-                // PASO 2: (Opcional) DEVOLVER EL MODELO AL ORIGEN
-                // Puedes optar por mantenerlo donde lo dejaste, o devolverlo al (0,0,0)
-                // Para consistencia, lo mantendremos donde lo dejó el usuario antes de entrar en modo AR.
+                // PASO 1: DEVOLVER EL TARGET A SU POSICIÓN ORIGINAL
+                controls.target.copy(originalControlsTarget);
                 
                 // Actualizar UI
                 button.classList.remove('active');
                 button.classList.add('inactive');
                 statusText.textContent = 'Activar Modo Cámara AR';
-                showMessage("Modo Cámara AR DESACTIVADO. La cámara regresa a la vista 3D estándar.", 'info');
+                showMessage("Modo Cámara AR DESACTIVADO. Fondo de escena restaurado.", 'info');
             }
             
             controls.update();
@@ -499,21 +503,12 @@
             
             // Si el modo AR está activo, forzamos que el modelo permanezca en su posición fija
             if (isARCameraMode && loadedModel) {
-                // Aseguramos que el modelo esté siempre en el punto donde se fijó
-                // Nota: Esto no siempre es necesario si solo manipulamos controls.target, 
-                // pero ayuda a asegurar que el modelo no se mueva por otras interacciones.
                 loadedModel.position.copy(arFixedPosition);
             }
             
             // Si el modo Mover (isMoveMode) está activo y el modo AR no lo está:
             if (isMoveMode && !isARCameraMode && loadedModel) {
-                // El modelo se mueve con el paneo de la cámara
-                // Movemos el modelo para que permanezca en el centro de la vista
-                const distance = camera.position.distanceTo(controls.target);
-                
-                // Mover el modelo en la dirección de la diferencia de target
-                // Esto es una simplificación: lo más fácil es dejar que OrbitControls haga su trabajo
-                // de mover el target, y luego mover el modelo para que siga al target.
+                // Movemos el modelo para que siga al target de OrbitControls
                 loadedModel.position.copy(controls.target);
             }
 
