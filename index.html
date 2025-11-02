@@ -3,111 +3,176 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>AR WebXR Hit Test — Ejemplo</title>
+  <title>AR Fallback - Tap to Place + Gyro</title>
   <style>
     html,body { height:100%; margin:0; overflow:hidden; font-family: Arial, sans-serif; background:#000; }
-    #info {
-      position: absolute; left: 12px; top: 12px; z-index: 10;
-      color: white; background: rgba(0,0,0,0.35); padding:8px 12px; border-radius:8px;
-      font-size:14px;
+    #ui {
+      position: absolute; left:12px; top:12px; z-index:14;
+      color:white; background: rgba(0,0,0,0.35); padding:8px 12px; border-radius:8px; font-size:14px;
     }
-    button#fallbackBtn { margin-left:8px; }
+    video#cameraFeed { position: fixed; inset:0; width:100%; height:100%; object-fit:cover; z-index:0; display:none; }
+    canvas { position: absolute; inset:0; z-index:1; touch-action: none; }
+    .btn { padding:8px 10px; margin-left:6px; border-radius:6px; border:0; background:#1f8; color:#022; font-weight:600; cursor:pointer; }
   </style>
 </head>
 <body>
-  <div id="info">WebXR Hit Test — <span id="status">comprobando soporte...</span></div>
+  <div id="ui">
+    <span id="status">Modo AR fallback</span>
+    <button id="startCam" class="btn">Activar Cámara</button>
+    <button id="requestGyro" class="btn">Permitir Giroscopio</button>
+  </div>
+  <video id="cameraFeed" autoplay playsinline></video>
 
   <script type="module">
     import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.module.js';
     import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.150.0/examples/jsm/loaders/GLTFLoader.js';
-    import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.150.0/examples/jsm/webxr/ARButton.js';
+    import { DeviceOrientationControls } from 'https://cdn.jsdelivr.net/npm/three@0.150.0/examples/jsm/controls/DeviceOrientationControls.js';
 
-    // -- CONFIG
+    // CONFIG
     const MODEL_URL = 'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/Duck/glTF/Duck.gltf';
-    // -----------------
+    // ------------
 
-    let camera, scene, renderer;
-    let controller;
-    let reticle;             // indicador donde hay hit
-    let hitTestSource = null;
-    let hitTestSourceRequested = false;
-    let model = null;
-    let placed = false;
-
+    let scene, camera, renderer, controls, model;
+    let modelPlaced = false;
+    const cameraFeed = document.getElementById('cameraFeed');
     const statusEl = document.getElementById('status');
 
     init();
     animate();
 
     function init(){
-      // Renderer
-      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 50);
+
+      renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
       renderer.setPixelRatio(window.devicePixelRatio);
       renderer.setSize(window.innerWidth, window.innerHeight);
-      renderer.xr.enabled = true;
       document.body.appendChild(renderer.domElement);
 
-      // Scene + camera
-      scene = new THREE.Scene();
-      camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 20);
+      // lights
+      const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
+      scene.add(hemi);
+      const dir = new THREE.DirectionalLight(0xffffff, 0.6);
+      dir.position.set(3,10,10);
+      scene.add(dir);
 
-      // Luz básica
-      const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1);
-      scene.add(light);
-
-      // Reticle (anillo que marcará hit)
-      const geometry = new THREE.RingGeometry(0.08, 0.13, 32).rotateX(-Math.PI/2);
-      const material = new THREE.MeshBasicMaterial({ color: 0x00ff99 });
-      reticle = new THREE.Mesh(geometry, material);
-      reticle.matrixAutoUpdate = false;
-      reticle.visible = false;
-      scene.add(reticle);
-
-      // Cargar modelo (oculto hasta colocar)
+      // GLTF
       const loader = new GLTFLoader();
       loader.load(MODEL_URL, (gltf) => {
         model = gltf.scene;
         model.scale.setScalar(0.6);
         model.visible = false;
+        // Añadimos una "sombra" como sprite (gradiente)
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+        const g = ctx.createRadialGradient(128,128,10,128,128,128);
+        g.addColorStop(0, 'rgba(0,0,0,0.6)');
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(0,0,256,256);
+        const tex = new THREE.CanvasTexture(canvas);
+        const spriteMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
+        const shadow = new THREE.Sprite(spriteMat);
+        shadow.name = 'shadow';
+        shadow.scale.set(1.6,1.6,1);
+        shadow.position.set(0, -0.9, 0); // debajo del centro del modelo (ajusta según modelo)
+        model.add(shadow);
         scene.add(model);
-      }, undefined, (err) => {
-        console.error('Error cargando GLTF:', err);
       });
 
-      // Controller: manejar "select" (tap) para colocar
-      controller = renderer.xr.getController(0);
-      controller.addEventListener('select', onSelect);
-      scene.add(controller);
+      // DeviceOrientationControls (gyro)
+      controls = new DeviceOrientationControls(camera);
+      // NOTA: en iOS moderno se necesita pedir permiso antes de usar DeviceOrientationEvent.
+      // Proporcionamos botón para solicitar permiso.
+      document.getElementById('requestGyro').addEventListener('click', async () => {
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+          try {
+            const perm = await DeviceOrientationEvent.requestPermission();
+            if (perm === 'granted') {
+              controls.connect();
+              statusEl.textContent = 'Giroscopio activo';
+            } else {
+              statusEl.textContent = 'Permiso giroscopio denegado';
+            }
+          } catch (e) {
+            console.warn('requestPermission error', e);
+            statusEl.textContent = 'No se pudo solicitar permiso giroscopio';
+          }
+        } else {
+          // navegadores que no requieren permiso explícito
+          controls.connect();
+          statusEl.textContent = 'Giroscopio activo (sin permiso requerido)';
+        }
+      });
 
-      // Botón AR: solicita sesión con feature 'hit-test'
-      document.body.appendChild(ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] }));
+      // activar cámara (passthrough)
+      document.getElementById('startCam').addEventListener('click', async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio:false });
+          cameraFeed.srcObject = stream;
+          cameraFeed.style.display = 'block';
+          renderer.domElement.style.zIndex = 1;
+          statusEl.textContent = 'Cámara activa';
+        } catch (err) {
+          console.error('No se pudo acceder a la cámara', err);
+          statusEl.textContent = 'Error cámara';
+        }
+      });
 
-      // Detectar soporte y actualizar estado
-      if (navigator.xr) {
-        navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
-          statusEl.textContent = supported ? 'WebXR disponible — pulsa "Enter AR"' : 'WebXR no disponible (usa fallback)';
-        }).catch(() => {
-          statusEl.textContent = 'Comprobación WebXR fallida';
-        });
-      } else {
-        statusEl.textContent = 'navigator.xr no está presente';
-      }
+      // eventos para tap-to-place
+      renderer.domElement.addEventListener('pointerdown', onPointerDown, { passive:false });
+      // pinch-to-scale
+      renderer.domElement.addEventListener('touchstart', onTouchStart, { passive:false });
+      renderer.domElement.addEventListener('touchmove', onTouchMove, { passive:false });
+      renderer.domElement.addEventListener('touchend', onTouchEnd, { passive:false });
 
       window.addEventListener('resize', onWindowResize);
     }
 
-    function onSelect(){
-      if (reticle.visible && model) {
-        // Coloca el modelo exactamente donde está el reticle
-        const pos = new THREE.Vector3();
-        const quat = new THREE.Quaternion();
-        reticle.matrix.decompose(pos, quat, new THREE.Vector3());
-        model.position.copy(pos);
-        model.quaternion.copy(quat);
+    function onPointerDown(ev){
+      ev.preventDefault();
+      // obtén NDC
+      const x = (ev.clientX / window.innerWidth) * 2 - 1;
+      const y = -(ev.clientY / window.innerHeight) * 2 + 1;
+      // calcular dirección hacia el punto tocado
+      const vec = new THREE.Vector3(x, y, 0.5).unproject(camera).sub(camera.position).normalize();
+      const distance = 2.0; // metros aproximados
+      const target = new THREE.Vector3().copy(camera.position).add(vec.multiplyScalar(distance));
+      if (model) {
+        model.position.copy(target);
+        // ajustar sombra
+        const shadow = model.getObjectByName('shadow');
+        if (shadow) {
+          shadow.scale.set(model.scale.x*2, model.scale.x*2, 1);
+        }
         model.visible = true;
-        placed = true;
-        statusEl.textContent = 'Modelo colocado';
+        modelPlaced = true;
+        statusEl.textContent = 'Modelo colocado (tap)';
       }
+    }
+
+    // --- PINCH HANDLERS ---
+    let lastDist = 0;
+    function getTouchDist(t0, t1){ return Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY); }
+    function onTouchStart(e){
+      if (e.touches && e.touches.length === 2) lastDist = getTouchDist(e.touches[0], e.touches[1]);
+    }
+    function onTouchMove(e){
+      if (e.touches && e.touches.length === 2 && model) {
+        e.preventDefault();
+        const d = getTouchDist(e.touches[0], e.touches[1]);
+        const factor = d / (lastDist || d);
+        model.scale.multiplyScalar(factor);
+        // limitar escala
+        model.scale.clampScalar(0.05, 10);
+        lastDist = d;
+        const shadow = model.getObjectByName('shadow');
+        if (shadow) shadow.scale.set(model.scale.x*2, model.scale.x*2, 1);
+      }
+    }
+    function onTouchEnd(e){
+      if (!e.touches || e.touches.length < 2) lastDist = 0;
     }
 
     function onWindowResize(){
@@ -116,49 +181,9 @@
       renderer.setSize(window.innerWidth, window.innerHeight);
     }
 
-    // Loop de animación con hit-test
     function animate(){
-      renderer.setAnimationLoop(render);
-    }
-
-    function render(timestamp, frame){
-      if (frame) {
-        const referenceSpace = renderer.xr.getReferenceSpace();
-        const session = renderer.xr.getSession();
-
-        if (!hitTestSourceRequested) {
-          // request a viewer reference space and hit test source
-          session.requestReferenceSpace('viewer').then((viewerSpace) => {
-            session.requestHitTestSource({ space: viewerSpace }).then((source) => {
-              hitTestSource = source;
-            });
-          });
-          session.addEventListener('end', () => {
-            hitTestSourceRequested = false;
-            hitTestSource = null;
-          });
-          hitTestSourceRequested = true;
-        }
-
-        if (hitTestSource) {
-          const hitTestResults = frame.getHitTestResults(hitTestSource);
-          if (hitTestResults.length > 0 && !placed) {
-            const hit = hitTestResults[0];
-            const pose = hit.getPose(referenceSpace);
-            if (pose) {
-              reticle.visible = true;
-              // fromArray acepta la matriz de pose (Float32Array)
-              reticle.matrix.fromArray(pose.transform.matrix);
-            } else {
-              reticle.visible = false;
-            }
-          } else {
-            // si ya colocamos el modelo, aún podemos ocultar el reticle o mantenerlo
-            if (!placed) reticle.visible = false;
-          }
-        }
-      }
-
+      requestAnimationFrame(animate);
+      controls.update(); // DeviceOrientationControls
       renderer.render(scene, camera);
     }
   </script>
