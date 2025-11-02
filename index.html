@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Visor 3D Minimalista</title>
+    <title>Visor 3D Minimalista con AR Ilusión</title>
     
     <!-- Scripts de Tailwind, Three.js y OrbitControls -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -59,6 +59,13 @@
             background-color: #769469;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
             transform: translateY(0);
+        }
+        .minimal-btn:disabled {
+            background-color: #c0c0c0; /* Un gris más claro */
+            color: #808080; /* Texto gris */
+            box-shadow: none;
+            cursor: not-allowed;
+            transform: none;
         }
 
         /* Estilo de los items del selector de modelo (Modal) */
@@ -148,7 +155,7 @@
         <div id="three-canvas-container" class="w-full h-full"></div>
 
         <!-- Caja de Alerta Minimalista -->
-        <div id="alert-box" class="minimal-alert fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 p-4 z-50 transition-opacity duration-300 pointer-events-none opacity-0"
+        <div id="alert-box" class="glass-panel-minimal fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 p-4 z-50 transition-opacity duration-300 pointer-events-none opacity-0"
             role="alert">
             <p id="alert-message" class="text-text-dark-soft font-medium"></p>
         </div>
@@ -244,7 +251,7 @@
                 <button id="toggle-placement-btn" class="minimal-btn w-full bg-orange-400 hover:bg-orange-500" onclick="togglePlacementMode()">
                     Modo Pared (AR): <span id="placement-status">OFF</span>
                 </button>
-                <p class="text-xs text-gray-500 mt-2 italic">Requiere permiso de la cámara.</p>
+                <p class="text-xs text-gray-500 mt-2 italic">Requiere permiso de la cámara y sensores.</p>
             </div>
             
             <!-- Controles de Posición (AR) -->
@@ -349,6 +356,12 @@
         let isDraggingModel = false;
         let lastClientX, lastClientY;
 
+        // Global variable for the device orientation permission status (for iOS 13+)
+        let deviceOrientationPermissionGranted = false;
+        // Global variable for the device orientation event handler reference
+        let deviceOrientationEventHandler = null;
+
+
         // Rutas de los modelos
         const MODEL_PATHS = {
             'Duck': 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF/Duck.gltf',
@@ -361,9 +374,11 @@
         const DEFAULT_TARGET_POS = new THREE.Vector3(0, 0, 0);
 
         // Configuración para el "Modo Pared" (Ilusión AR)
+        // La cámara debe estar cerca de 0,0,0 para imitar el punto de vista del usuario
+        // El modelo debe estar más lejos en Z para aparecer "en el fondo" del vídeo.
         const PLACEMENT_CAMERA_POS = new THREE.Vector3(0, 1.3, 0.5); 
-        const PLACEMENT_TARGET_POS = new THREE.Vector3(0, 1.3, -2.5); 
-        const PLACEMENT_MODEL_OFFSET = new THREE.Vector3(0, 0, -2.5); 
+        const PLACEMENT_TARGET_POS = new THREE.Vector3(0, 1.3, -2.5); // El target no es tan relevante cuando el giroscopio controla la rotación
+        const PLACEMENT_MODEL_OFFSET = new THREE.Vector3(0, 0, -2.5); // Posición inicial del modelo en modo AR
 
 
         // --- Inicialización de Three.js ---
@@ -411,10 +426,34 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
+        // --- Manejo de la Orientación del Dispositivo (Giroscopio) ---
+        function handleDeviceOrientation(event) {
+            if (!isPlacementModeActive) return; // Solo aplicar si el modo AR está activo
+
+            // Los valores alpha, beta, gamma representan rotaciones en el espacio
+            // y pueden requerir ajustes (orden Euler, signos) dependiendo del dispositivo/navegador.
+            // Este es un intento común para alinear el dispositivo con la cámara de Three.js.
+            // Alpha: Rotación alrededor del eje Z (yaw, brújula)
+            // Beta: Rotación alrededor del eje X (pitch, inclinación adelante/atrás)
+            // Gamma: Rotación alrededor del eje Y (roll, inclinación izquierda/derecha)
+
+            const alpha = event.alpha ? THREE.MathUtils.degToRad(event.alpha) : 0;
+            const beta = event.beta ? THREE.MathUtils.degToRad(event.beta) : 0;
+            const gamma = event.gamma ? THREE.MathUtils.degToRad(event.gamma) : 0;
+
+            const euler = new THREE.Euler();
+            // El orden 'YXZ' es a menudo una buena base. -gamma es común para compensar el sistema de coordenadas.
+            euler.set(beta, alpha, -gamma, 'YXZ'); 
+            
+            camera.quaternion.setFromEuler(euler);
+        }
+
         // --- Bucle de Animación ---
         function animate() {
             requestAnimationFrame(animate);
-            controls.update(); 
+            if (!isPlacementModeActive) { // Solo actualiza OrbitControls si no estamos en modo AR
+                controls.update(); 
+            }
             if (videoTexture) videoTexture.needsUpdate = true;
             renderer.render(scene, camera);
         }
@@ -505,8 +544,10 @@
                     
                     if (isPlacementModeActive) {
                         currentModel.position.copy(PLACEMENT_MODEL_OFFSET);
+                        currentModel.rotation.set(0, 0, 0); // Reset rotation in AR mode initially
                     } else {
                         currentModel.position.set(0, 0, 0);
+                        currentModel.rotation.set(0, 0, 0); // Reset rotation in normal mode
                     }
 
                     alertMessage(`Modelo "${modelName}" cargado con éxito.`);
@@ -563,7 +604,8 @@
                 menuIcon.classList.remove('hidden');
                 closeIcon.classList.add('hidden');
                 // Restaurar OrbitControls si no estamos en Modo Mover (el estado es Rotar)
-                if (!document.getElementById('lock-status').textContent.includes('Mover')) {
+                // Y NO estamos en modo AR
+                if (!document.getElementById('lock-status').textContent.includes('Mover') && !isPlacementModeActive) {
                     controls.enabled = true;
                 }
             }
@@ -584,6 +626,10 @@
 
         // 3. Zoom de Cámara
         function zoomCamera(factor) {
+            if (isPlacementModeActive) {
+                alertMessage('Zoom de cámara deshabilitado en Modo Pared. Ajusta el modelo directamente.', 'warning');
+                return;
+            }
             if (!controls) return;
             
             const currentDistance = camera.position.distanceTo(controls.target);
@@ -611,6 +657,10 @@
 
         // 5. Rotación Automática
         function toggleAutoRotate() {
+            if (isPlacementModeActive) {
+                alertMessage('Rotación automática deshabilitada en Modo Pared.', 'warning');
+                return;
+            }
             controls.autoRotate = !controls.autoRotate;
             const statusText = controls.autoRotate ? 'ON' : 'OFF';
             document.getElementById('auto-rotate-status').textContent = statusText;
@@ -656,7 +706,7 @@
             const status = document.getElementById('placement-status');
             const placementControls = document.getElementById('placement-controls');
             const lockBtn = document.getElementById('toggle-lock-btn');
-            const lockStatus = document.getElementById('lock-status').textContent;
+            const autoRotateBtn = document.getElementById('toggle-rotate-btn');
 
             if (isPlacementModeActive) {
                 // --- Desactivar Modo Colocación ---
@@ -669,22 +719,34 @@
                 video = null;
                 videoTexture = null;
 
+                // Quitar listener de deviceorientation
+                if (deviceOrientationEventHandler) {
+                    window.removeEventListener('deviceorientation', deviceOrientationEventHandler, true);
+                    deviceOrientationEventHandler = null; // Limpiar la referencia
+                }
+
                 // Restaurar Escena
                 scene.background = new THREE.Color(0xf7f3ed); 
                 
                 // Restaurar Cámara, Controles y Modelo
-                
-                // Si estaba en 'Rotar', restaurar controles.enabled a true. Si estaba en 'Mover', sigue en false.
+                // Restaurar el estado de OrbitControls según el último "lock-status" (si no es "Mover")
+                const lockStatus = document.getElementById('lock-status').textContent;
                 controls.enabled = lockStatus.includes('Rotar');
+                controls.autoRotate = false; // Asegurarse de que la rotación automática esté desactivada
+                document.getElementById('auto-rotate-status').textContent = 'OFF';
+                
                 lockBtn.disabled = false; // Habilitar el toggle de Mover/Rotar
+                autoRotateBtn.disabled = false; // Habilitar el toggle de rotación automática
                 
                 camera.position.copy(DEFAULT_CAMERA_POS);
                 controls.target.copy(DEFAULT_TARGET_POS);
-                controls.update();
-                
+                camera.rotation.set(0, 0, 0); // Resetear la rotación de la cámara (para borrar la del giroscopio)
+                camera.quaternion.set(0, 0, 0, 1); // Resetear el cuaternión también
+                controls.update(); // Actualizar controles para aplicar el reseteo
+
                 if (currentModel) {
                     currentModel.position.set(0, 0, 0);
-                    currentModel.rotation.set(0, 0, 0); 
+                    currentModel.rotation.set(0, 0, 0); // Resetear rotación del modelo
                 }
                 
                 // Actualizar UI
@@ -697,6 +759,26 @@
 
             } else {
                 // --- Activar Modo Colocación ---
+
+                // 1. Solicitar permiso de deviceorientation si es necesario (para iOS 13+)
+                if (typeof DeviceOrientationEvent.requestPermission === 'function' && !deviceOrientationPermissionGranted) {
+                    try {
+                        const permissionState = await DeviceOrientationEvent.requestPermission();
+                        if (permissionState === 'granted') {
+                            deviceOrientationPermissionGranted = true;
+                            alertMessage('Permiso de orientación del dispositivo concedido.', 'success');
+                        } else {
+                            alertMessage('Permiso de orientación del dispositivo denegado.', 'error');
+                            return; // No activar el modo AR si no hay permiso de giroscopio
+                        }
+                    } catch (err) {
+                        console.error('Error al solicitar permiso de Device Orientation:', err);
+                        alertMessage('ERROR: No se pudo solicitar permiso de orientación del dispositivo. Asegúrate de estar en un contexto seguro (HTTPS).', 'error');
+                        return;
+                    }
+                }
+
+                // 2. Acceder a la cámara
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
                     
@@ -706,17 +788,29 @@
                     
                     videoTexture = new THREE.VideoTexture(video);
                     
-                    // Configurar Escena para AR Illusion
+                    // Configurar Escena para AR Illusion: el fondo es el vídeo de la cámara
                     scene.background = videoTexture;
                     
-                    // Configurar Cámara, Controles y Modelo
+                    // Configurar Cámara, Controles y Modelo para el modo AR
                     controls.enabled = false; // Forzar el bloqueo del control de órbita
-                    lockBtn.disabled = true; // Deshabilitar el toggle en modo AR
+                    controls.autoRotate = false; // Desactivar rotación automática
+                    document.getElementById('auto-rotate-status').textContent = 'OFF'; // Actualizar UI
+                    lockBtn.disabled = true; // Deshabilitar el toggle de Mover/Rotar
+                    autoRotateBtn.disabled = true; // Deshabilitar el toggle de rotación automática
                     
-                    if (currentModel) currentModel.position.copy(PLACEMENT_MODEL_OFFSET);
+                    if (currentModel) {
+                        currentModel.position.copy(PLACEMENT_MODEL_OFFSET);
+                        currentModel.rotation.set(0, 0, 0); // Reset model rotation in AR mode initially
+                    }
                     camera.position.copy(PLACEMENT_CAMERA_POS);
-                    controls.target.copy(PLACEMENT_TARGET_POS);
-                    controls.update();
+                    controls.target.copy(PLACEMENT_TARGET_POS); // El target sigue la posición del modelo, aunque la orientación sea del giroscopio
+                    controls.update(); // Actualizar controles para aplicar la nueva posición
+
+                    // 3. Añadir listener de deviceorientation
+                    if (!deviceOrientationEventHandler) { // Asegurarse de que el listener solo se añada una vez
+                        deviceOrientationEventHandler = handleDeviceOrientation;
+                        window.addEventListener('deviceorientation', deviceOrientationEventHandler, true);
+                    }
 
                     // Actualizar UI
                     isPlacementModeActive = true;
@@ -724,11 +818,11 @@
                     btn.classList.remove('bg-orange-400', 'hover:bg-orange-500'); 
                     btn.classList.add('bg-green-600', 'hover:bg-green-500');
                     placementControls.classList.remove('hidden'); 
-                    alertMessage('Modo Pared Activado (Cámara en uso).', 'success');
+                    alertMessage('Modo Pared Activado (Cámara y Sensores en uso).', 'success');
 
                 } catch (err) {
-                    console.error('Error al acceder a la cámara:', err);
-                    alertMessage('ERROR: No se pudo acceder a la cámara o permisos denegados.', 'error');
+                    console.error('Error al acceder a la cámara o sensores:', err);
+                    alertMessage('ERROR: No se pudo acceder a la cámara o permisos denegados. Asegúrate de permitir el acceso a la cámara.', 'error');
                 }
             }
         }
@@ -744,19 +838,20 @@
                 clearTimeout(alertTimeout);
             }
 
-            alertBox.className = 'minimal-alert fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 p-4 z-50 transition-opacity duration-300 pointer-events-none opacity-0';
+            // Reset base classes, then add glass-panel-minimal
+            alertBox.className = 'glass-panel-minimal fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 p-4 z-50 transition-opacity duration-300 pointer-events-none opacity-0';
             
             // Lógica de color de alerta...
             const colors = {
-                success: { text: 'text-green-600', border: 'border-green-300/50', icon: '✓' },
-                error: { text: 'text-red-600', border: 'border-red-300/50', icon: '✗' },
-                warning: { text: 'text-yellow-600', border: 'border-yellow-300/50', icon: '!' },
-                info: { text: 'text-gray-600', border: 'border-gray-300/50', icon: 'i' }
+                success: { text: 'text-green-600', icon: '✓' },
+                error: { text: 'text-red-600', icon: '✗' },
+                warning: { text: 'text-yellow-600', icon: '!' },
+                info: { text: 'text-gray-600', icon: 'i' }
             };
             const style = colors[type] || colors.info;
 
-            alertBox.classList.add(style.border);
-            alertMsg.innerHTML = `<span class="${style.text} mr-2">${style.icon}</span> ${message}`;
+            // Aplica el color del texto a todo el mensaje
+            alertMsg.innerHTML = `<span class="${style.text} mr-2">${style.icon}</span> <span class="${style.text}">${message}</span>`;
 
             // Mostrar
             alertBox.classList.remove('opacity-0', 'pointer-events-none');
