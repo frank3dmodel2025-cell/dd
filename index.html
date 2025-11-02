@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Professional 3D Model Viewer</title>
+    <!-- Load Tailwind CSS for modern styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Configure Tailwind to use Inter font and enable dark mode
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        'primary': '#4f46e5', // Indigo
+                        'secondary': '#1e293b', // Slate-800
+                        'dark-bg': '#0f172a', // Slate-900
+                        'card-bg': '#1e293b', // Slate-800
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            overflow: hidden; /* Prevent scrolling */
+        }
+        #viewer-container {
+            width: 100%;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        canvas {
+            display: block;
+        }
+        .control-panel {
+            z-index: 10;
+        }
+        /* Custom scrollbar for the carousel for a cleaner look */
+        .carousel-container::-webkit-scrollbar {
+            height: 6px;
+        }
+        .carousel-container::-webkit-scrollbar-track {
+            background: #1e293b;
+            border-radius: 3px;
+        }
+        .carousel-container::-webkit-scrollbar-thumb {
+            background: #4f46e5;
+            border-radius: 3px;
+        }
+        .carousel-item {
+            transition: transform 0.3s ease, opacity 0.3s ease;
+        }
+        .carousel-item:hover {
+            transform: translateY(-5px);
+        }
+        .carousel-item.active {
+            border: 3px solid #4f46e5;
+            box-shadow: 0 0 15px rgba(79, 70, 229, 0.8);
+        }
+        /* Hidden video element for camera feed */
+        #video-background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: -10;
+            display: none; /* Controlled by JS */
+        }
+    </style>
+</head>
+<body class="bg-dark-bg text-white">
+
+    <!-- Video Element for Camera Feed -->
+    <video id="video-background" autoplay playsinline></video>
+
+    <!-- Three.js Viewer Container -->
+    <div id="viewer-container"></div>
+
+    <!-- Main UI Overlay -->
+    <div class="fixed top-0 left-0 w-full h-full pointer-events-none p-4 flex flex-col justify-between">
+
+        <!-- Top Controls Panel (Zoom, Rotation, Lock, Background) -->
+        <div class="control-panel self-end pointer-events-auto bg-card-bg/90 p-4 rounded-lg shadow-2xl backdrop-blur-sm">
+            <h2 class="text-lg font-bold mb-3 text-primary">Viewer Controls</h2>
+            <div class="flex flex-col space-y-3">
+                <!-- Zoom and Scale -->
+                <div class="flex space-x-2">
+                    <button onclick="zoomCamera(0.8)" class="flex-1 bg-primary hover:bg-indigo-600 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Zoom In</button>
+                    <button onclick="zoomCamera(1.2)" class="flex-1 bg-primary hover:bg-indigo-600 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Zoom Out</button>
+                </div>
+                <div class="flex space-x-2">
+                    <button onclick="scaleModel(1.1)" class="flex-1 bg-secondary hover:bg-slate-700 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Scale Up</button>
+                    <button onclick="scaleModel(0.9)" class="flex-1 bg-secondary hover:bg-slate-700 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Scale Down</button>
+                </div>
+
+                <!-- Rotation and Lock -->
+                <button id="autoRotateBtn" onclick="toggleAutoRotate()" class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Auto Rotate: ON</button>
+                <button id="lockModelBtn" onclick="toggleLockModel()" class="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Lock Model: OFF</button>
+
+                <!-- Background Toggle -->
+                <button id="backgroundBtn" onclick="toggleBackground()" class="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Use AR Background</button>
+            </div>
+        </div>
+
+        <!-- Bottom Carousel Panel -->
+        <div class="pointer-events-auto bg-card-bg/90 p-3 rounded-t-lg shadow-2xl backdrop-blur-sm">
+            <h2 class="text-md font-bold mb-2 text-primary">Model Selection Carousel</h2>
+            <div id="carousel-container" class="carousel-container flex overflow-x-auto space-x-4 pb-1">
+                <!-- Carousel items will be injected here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Three.js Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+    <script>
+        // --- Global Variables ---
+        let scene, camera, renderer, controls, loader;
+        let currentModel = null;
+        let isAutoRotating = true;
+        let isModelLocked = false;
+        let isCameraBackground = false;
+        let videoTexture = null;
+        let videoElement = document.getElementById('video-background');
+        const container = document.getElementById('viewer-container');
+        // Updated model paths to use reliable CDN links for better accessibility in sandboxed environments
+        const models = [
+            { id: 1, name: 'Duck', path: 'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/Duck/glTF/Duck.gltf', thumb: 'https://placehold.co/100x100/4f46e5/white?text=Duck' },
+            { id: 2, name: 'Helmet', path: 'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf', thumb: 'https://placehold.co/100x100/1e293b/white?text=Helmet' },
+            { id: 3, name: 'Boom Box', path: 'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/BoomBox/glTF/BoomBox.gltf', thumb: 'https://placehold.co/100x100/f59e0b/white?text=Box' }
+        ];
+
+        // --- Core Initialization ---
+        function init() {
+            // Scene setup
+            scene = new THREE.Scene();
+
+            // Camera setup
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 1, 3);
+
+            // Renderer setup
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setClearColor(0x0f172a, 1); // Default solid background (Slate-900)
+            container.appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            directionalLight.position.set(5, 10, 7.5);
+            scene.add(directionalLight);
+
+            // Controls setup
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true; // Smooth rotation
+            controls.dampingFactor = 0.05;
+            controls.screenSpacePanning = false; // Only pan on the screen plane
+
+            // Loader setup
+            loader = new THREE.GLTFLoader();
+
+            // Event listeners
+            window.addEventListener('resize', onWindowResize);
+
+            // Load the first model by default
+            selectModel(models[0].id);
+
+            // Initialize carousel UI
+            setupCarousel();
+
+            // Start animation loop
+            animate();
+        }
+
+        // --- Model Loading and Management ---
+        function loadModel(modelPath) {
+            if (currentModel) {
+                scene.remove(currentModel);
+            }
+
+            // Clear existing model and show a loading indicator (optional, but good practice)
+            console.log(`Loading model: ${modelPath}`);
+
+            loader.load(modelPath, function (gltf) {
+                currentModel = gltf.scene;
+
+                // Scale and center the model
+                const box = new THREE.Box3().setFromObject(currentModel);
+                const size = box.getSize(new THREE.Vector3());
+                const center = box.getCenter(new THREE.Vector3());
+
+                // Calculate scale factor (e.g., fit to a max size of 2 units)
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const scaleFactor = 2.0 / maxDim;
+                currentModel.scale.set(scaleFactor, scaleFactor, scaleFactor);
+
+                // Recalculate center after scaling for correct positioning
+                currentModel.position.sub(center.multiplyScalar(scaleFactor));
+                currentModel.position.y += size.y * scaleFactor / 2; // Lift model slightly above origin
+
+                scene.add(currentModel);
+
+            }, undefined, function (error) {
+                // IMPROVED ERROR HANDLING: Logging a more descriptive error message and showing a screen alert
+                console.error('An error occurred loading the model. This is usually due to network (CORS) issues or a bad URL. Please check the browser console network tab for details.', error);
+                alertMessage("Model failed to load. Displaying fallback cube. Check console for network error details.");
+
+                // Fallback: Add a simple visible object if GLB fails
+                const geometry = new THREE.BoxGeometry(1, 1, 1);
+                const material = new THREE.MeshPhongMaterial({ color: 0xcccccc });
+                currentModel = new THREE.Mesh(geometry, material);
+                scene.add(currentModel);
+            });
+        }
+
+        function selectModel(modelId) {
+            const modelData = models.find(m => m.id === modelId);
+            if (modelData) {
+                loadModel(modelData.path);
+                // Update active carousel item
+                document.querySelectorAll('.carousel-item').forEach(item => {
+                    item.classList.remove('active');
+                    if (parseInt(item.dataset.modelId) === modelId) {
+                        item.classList.add('active');
+                    }
+                });
+            }
+        }
+
+        // --- Carousel UI ---
+        function setupCarousel() {
+            const carousel = document.getElementById('carousel-container');
+            carousel.innerHTML = models.map(model => `
+                <div data-model-id="${model.id}" onclick="selectModel(${model.id})"
+                     class="carousel-item flex-shrink-0 w-32 h-20 bg-card-bg rounded-lg border-2 border-transparent cursor-pointer shadow-md overflow-hidden relative">
+                    <img src="${model.thumb}" alt="${model.name}" class="w-full h-full object-cover opacity-50">
+                    <span class="absolute inset-0 flex items-center justify-center text-sm font-medium text-white p-1 text-center">${model.name}</span>
+                </div>
+            `).join('');
+
+            // Set initial active state
+            if (models.length > 0) {
+                document.querySelector(`[data-model-id="${models[0].id}"]`).classList.add('active');
+            }
+        }
+
+        // --- Animation Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (isAutoRotating && currentModel && !isModelLocked) {
+                currentModel.rotation.y += 0.005;
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // --- Utility Functions ---
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // --- Control Functions ---
+
+        function zoomCamera(factor) {
+            const newDistance = controls.getDistance() * factor;
+            // Prevent zooming too far in or out
+            if (newDistance > 0.5 && newDistance < 10) {
+                camera.position.lerp(controls.target.clone().add(camera.position.clone().sub(controls.target).normalize().multiplyScalar(newDistance)), 0.3);
+                controls.update();
+            }
+        }
+
+        function scaleModel(factor) {
+            if (currentModel) {
+                // Smooth scaling
+                const targetScale = currentModel.scale.clone().multiplyScalar(factor);
+                currentModel.scale.lerp(targetScale, 0.3);
+            }
+        }
+
+        function toggleAutoRotate() {
+            isAutoRotating = !isAutoRotating;
+            const btn = document.getElementById('autoRotateBtn');
+            btn.textContent = `Auto Rotate: ${isAutoRotating ? 'ON' : 'OFF'}`;
+            btn.classList.toggle('bg-green-600', isAutoRotating);
+            btn.classList.toggle('bg-gray-500', !isAutoRotating);
+        }
+
+        function toggleLockModel() {
+            isModelLocked = !isModelLocked;
+            const btn = document.getElementById('lockModelBtn');
+            btn.textContent = `Lock Model: ${isModelLocked ? 'ON' : 'OFF'}`;
+            btn.classList.toggle('bg-red-600', !isModelLocked);
+            btn.classList.toggle('bg-blue-600', isModelLocked);
+
+            // Disabling controls prevents the user from manually rotating the camera
+            controls.enabled = !isModelLocked;
+
+            // Optional: When locking the model, reset camera view to front
+            if (isModelLocked) {
+                camera.position.set(0, 1, 3);
+                controls.target.set(0, 0, 0);
+                controls.update();
+            }
+        }
+
+        // --- Camera Background Feature ---
+        async function toggleBackground() {
+            isCameraBackground = !isCameraBackground;
+            const btn = document.getElementById('backgroundBtn');
+
+            if (isCameraBackground) {
+                // Attempt to start camera stream
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: 'environment' } // Prefer rear camera
+                    });
+                    videoElement.srcObject = stream;
+                    videoElement.style.display = 'block';
+
+                    // Create Three.js VideoTexture
+                    videoTexture = new THREE.VideoTexture(videoElement);
+                    videoTexture.minFilter = THREE.LinearFilter;
+                    videoTexture.magFilter = THREE.LinearFilter;
+                    scene.background = videoTexture;
+
+                    renderer.setClearColor(0x000000, 0); // Transparent background for renderer
+
+                    btn.textContent = 'Use Solid Background';
+                    btn.classList.remove('bg-yellow-600');
+                    btn.classList.add('bg-cyan-600');
+
+                } catch (err) {
+                    console.error("Error accessing the camera: ", err);
+                    // Fallback to solid color and notify user
+                    alertMessage("Could not access camera. Please check permissions.");
+                    isCameraBackground = false;
+                    scene.background = null;
+                    renderer.setClearColor(0x0f172a, 1);
+                }
+            } else {
+                // Stop camera stream and revert to solid color
+                if (videoElement.srcObject) {
+                    videoElement.srcObject.getTracks().forEach(track => track.stop());
+                }
+                videoElement.style.display = 'none';
+                scene.background = null; // Revert to null background
+                renderer.setClearColor(0x0f172a, 1); // Set solid background color
+                if (videoTexture) {
+                    videoTexture.dispose();
+                }
+
+                btn.textContent = 'Use AR Background';
+                btn.classList.remove('bg-cyan-600');
+                btn.classList.add('bg-yellow-600');
+            }
+        }
+
+        // Custom alert/message box (replacing alert())
+        function alertMessage(message) {
+            const msgBox = document.createElement('div');
+            msgBox.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-red-700 text-white p-4 rounded-lg shadow-xl z-50 transition duration-300';
+            msgBox.textContent = message;
+            document.body.appendChild(msgBox);
+            setTimeout(() => {
+                msgBox.remove();
+            }, 3000);
+        }
+
+        // Initialize the application when the window loads
+        window.onload = init;
+
+    </script>
+</body>
+</html>
