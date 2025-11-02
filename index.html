@@ -89,32 +89,42 @@
     <!-- Main UI Overlay -->
     <div class="fixed top-0 left-0 w-full h-full pointer-events-none p-4 flex flex-col justify-between">
 
-        <!-- Top Controls Panel (Zoom, Rotation, Lock, Background) -->
-        <div class="control-panel self-end pointer-events-auto bg-card-bg/90 p-4 rounded-lg shadow-2xl backdrop-blur-sm">
-            <h2 class="text-lg font-bold mb-3 text-primary">Viewer Controls</h2>
-            <div class="flex flex-col space-y-3">
-                <!-- Zoom and Scale -->
-                <div class="flex space-x-2">
-                    <button onclick="zoomCamera(0.8)" class="flex-1 bg-primary hover:bg-indigo-600 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Zoom In</button>
-                    <button onclick="zoomCamera(1.2)" class="flex-1 bg-primary hover:bg-indigo-600 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Zoom Out</button>
-                </div>
-                <div class="flex space-x-2">
-                    <button onclick="scaleModel(1.1)" class="flex-1 bg-secondary hover:bg-slate-700 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Scale Up</button>
-                    <button onclick="scaleModel(0.9)" class="flex-1 bg-secondary hover:bg-slate-700 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Scale Down</button>
-                </div>
+        <!-- Top Controls Panel (Hamburger Menu on Left) -->
+        <div class="fixed top-4 left-4 pointer-events-none z-20">
+            <!-- Menu Toggle Button (Hamburger) -->
+            <button id="menuToggleBtn" class="pointer-events-auto bg-primary hover:bg-indigo-600 text-white p-3 rounded-lg shadow-xl transition duration-200 focus:outline-none">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+            </button>
 
-                <!-- Rotation and Lock -->
-                <button id="autoRotateBtn" onclick="toggleAutoRotate()" class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Auto Rotate: ON</button>
-                <button id="lockModelBtn" onclick="toggleLockModel()" class="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Lock Model: OFF</button>
+            <!-- Control Panel Content (initially hidden on mobile, or managed by JS) -->
+            <div id="controlPanel" class="control-panel mt-3 pointer-events-auto bg-card-bg/90 p-4 rounded-lg shadow-2xl backdrop-blur-sm hidden">
+                <h2 class="text-lg font-bold mb-3 text-primary">Controles del Visor</h2>
+                <div class="flex flex-col space-y-3">
+                    <!-- Zoom and Scale -->
+                    <div class="flex space-x-2">
+                        <button onclick="zoomCamera(0.8)" class="flex-1 bg-primary hover:bg-indigo-600 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Acercar</button>
+                        <button onclick="zoomCamera(1.2)" class="flex-1 bg-primary hover:bg-indigo-600 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Alejar</button>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button onclick="scaleModel(1.1)" class="flex-1 bg-secondary hover:bg-slate-700 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Aumentar Escala</button>
+                        <button onclick="scaleModel(0.9)" class="flex-1 bg-secondary hover:bg-slate-700 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Reducir Escala</button>
+                    </div>
 
-                <!-- Background Toggle -->
-                <button id="backgroundBtn" onclick="toggleBackground()" class="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Use AR Background</button>
+                    <!-- Rotation and Lock -->
+                    <button id="autoRotateBtn" onclick="toggleAutoRotate()" class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Rotación Automática: SÍ</button>
+                    <button id="lockModelBtn" onclick="toggleLockModel()" class="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Bloquear Modelo: NO</button>
+
+                    <!-- Background Toggle -->
+                    <button id="backgroundBtn" onclick="toggleBackground()" class="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Usar Fondo RA</button>
+                </div>
             </div>
         </div>
 
+
         <!-- Bottom Carousel Panel -->
-        <div class="pointer-events-auto bg-card-bg/90 p-3 rounded-t-lg shadow-2xl backdrop-blur-sm">
-            <h2 class="text-md font-bold mb-2 text-primary">Model Selection Carousel</h2>
+        <!-- Added id="carouselPanel" and class="hidden" to control visibility with the hamburger menu -->
+        <div id="carouselPanel" class="self-center pointer-events-auto bg-card-bg/90 p-3 rounded-t-lg shadow-2xl backdrop-blur-sm hidden">
+            <h2 class="text-md font-bold mb-2 text-primary">Carrusel de Selección de Modelo</h2>
             <div id="carousel-container" class="carousel-container flex overflow-x-auto space-x-4 pb-1">
                 <!-- Carousel items will be injected here -->
             </div>
@@ -136,6 +146,7 @@
         let videoTexture = null;
         let videoElement = document.getElementById('video-background');
         const container = document.getElementById('viewer-container');
+        let isMenuOpen = false; // New state for menu visibility
         // Updated model paths to use reliable CDN links for better accessibility in sandboxed environments
         const models = [
             { id: 1, name: 'Duck', path: 'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/Duck/glTF/Duck.gltf', thumb: 'https://placehold.co/100x100/4f46e5/white?text=Duck' },
@@ -177,6 +188,9 @@
 
             // Event listeners
             window.addEventListener('resize', onWindowResize);
+            // Attach toggle function to the new hamburger button
+            document.getElementById('menuToggleBtn').addEventListener('click', toggleMenu);
+
 
             // Load the first model by default
             selectModel(models[0].id);
@@ -219,7 +233,7 @@
             }, undefined, function (error) {
                 // IMPROVED ERROR HANDLING: Logging a more descriptive error message and showing a screen alert
                 console.error('An error occurred loading the model. This is usually due to network (CORS) issues or a bad URL. Please check the browser console network tab for details.', error);
-                alertMessage("Model failed to load. Displaying fallback cube. Check console for network error details.");
+                alertMessage("El modelo no se pudo cargar. Se muestra un cubo de respaldo. Verifique la consola para ver detalles del error de red.");
 
                 // Fallback: Add a simple visible object if GLB fails
                 const geometry = new THREE.BoxGeometry(1, 1, 1);
@@ -281,6 +295,21 @@
 
         // --- Control Functions ---
 
+        function toggleMenu() {
+            const controlPanel = document.getElementById('controlPanel');
+            const carouselPanel = document.getElementById('carouselPanel'); // Panel del carrusel
+
+            isMenuOpen = !isMenuOpen;
+
+            if (isMenuOpen) {
+                controlPanel.classList.remove('hidden');
+                carouselPanel.classList.remove('hidden'); // Mostrar carrusel
+            } else {
+                controlPanel.classList.add('hidden');
+                carouselPanel.classList.add('hidden'); // Ocultar carrusel
+            }
+        }
+
         function zoomCamera(factor) {
             const newDistance = controls.getDistance() * factor;
             // Prevent zooming too far in or out
@@ -301,7 +330,7 @@
         function toggleAutoRotate() {
             isAutoRotating = !isAutoRotating;
             const btn = document.getElementById('autoRotateBtn');
-            btn.textContent = `Auto Rotate: ${isAutoRotating ? 'ON' : 'OFF'}`;
+            btn.textContent = `Rotación Automática: ${isAutoRotating ? 'SÍ' : 'NO'}`;
             btn.classList.toggle('bg-green-600', isAutoRotating);
             btn.classList.toggle('bg-gray-500', !isAutoRotating);
         }
@@ -309,7 +338,7 @@
         function toggleLockModel() {
             isModelLocked = !isModelLocked;
             const btn = document.getElementById('lockModelBtn');
-            btn.textContent = `Lock Model: ${isModelLocked ? 'ON' : 'OFF'}`;
+            btn.textContent = `Bloquear Modelo: ${isModelLocked ? 'SÍ' : 'NO'}`;
             btn.classList.toggle('bg-red-600', !isModelLocked);
             btn.classList.toggle('bg-blue-600', isModelLocked);
 
@@ -318,6 +347,8 @@
 
             // Optional: When locking the model, reset camera view to front
             if (isModelLocked) {
+                // NOTA: La escala del modelo (currentModel.scale) se PRESERVA intencionalmente
+                // para que el modelo mantenga el tamaño que el usuario le dio antes del bloqueo.
                 camera.position.set(0, 1, 3);
                 controls.target.set(0, 0, 0);
                 controls.update();
@@ -346,14 +377,14 @@
 
                     renderer.setClearColor(0x000000, 0); // Transparent background for renderer
 
-                    btn.textContent = 'Use Solid Background';
+                    btn.textContent = 'Usar Fondo Sólido';
                     btn.classList.remove('bg-yellow-600');
                     btn.classList.add('bg-cyan-600');
 
                 } catch (err) {
                     console.error("Error accessing the camera: ", err);
                     // Fallback to solid color and notify user
-                    alertMessage("Could not access camera. Please check permissions.");
+                    alertMessage("No se pudo acceder a la cámara. Por favor, verifique los permisos.");
                     isCameraBackground = false;
                     scene.background = null;
                     renderer.setClearColor(0x0f172a, 1);
@@ -370,7 +401,7 @@
                     videoTexture.dispose();
                 }
 
-                btn.textContent = 'Use AR Background';
+                btn.textContent = 'Usar Fondo RA';
                 btn.classList.remove('bg-cyan-600');
                 btn.classList.add('bg-yellow-600');
             }
@@ -379,7 +410,7 @@
         // Custom alert/message box (replacing alert())
         function alertMessage(message) {
             const msgBox = document.createElement('div');
-            msgBox.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-red-700 text-white p-4 rounded-lg shadow-xl z-50 transition duration-300';
+            msgBox.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-red-700 text-white p-4 rounded-lg shadow-xl z-50 transition duration-300 text-center';
             msgBox.textContent = message;
             document.body.appendChild(msgBox);
             setTimeout(() => {
