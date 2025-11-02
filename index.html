@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Visor AR con Rastreo Rotacional y Escala Táctil</title>
+    <title>Visor AR con Rastreo Rotacional y Anclaje Ilusorio</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -15,13 +15,12 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <style>
-        /* Estilos base y scrollbar para minimalismo/glassmorphism */
         body {
             font-family: 'Poppins', sans-serif;
             background-color: #f7f3ed; 
             color: #3b4233;
             overflow: hidden;
-            touch-action: none; /* Deshabilitar el zoom/pan del navegador para los gestos AR */
+            touch-action: none; 
         }
         canvas {
             display: block;
@@ -30,7 +29,7 @@
             position: absolute;
             top: 0;
             left: 0;
-            z-index: 10; /* Canvas encima del video */
+            z-index: 10;
         }
         .video-background {
             position: fixed;
@@ -39,7 +38,7 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            z-index: 5; /* Video detrás del canvas */
+            z-index: 5; 
             display: none;
         }
         .glass-panel {
@@ -48,7 +47,6 @@
             border: 1px solid rgba(255, 255, 255, 0.125);
             box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
         }
-        /* Estilo para el panel de control deslizable */
         #control-panel {
             transition: transform 0.3s ease-in-out;
             transform: translateX(100%);
@@ -168,14 +166,14 @@
         let isPanelVisible = false;
         let isARMode = false;
         let isMotionTrackingActive = false;
-        let deviceOrientationControls; // Nuevo control para la AR
+        let deviceOrientationControls; 
         let alertTimeout;
         const videoElement = document.getElementById('video-feed');
         
         // Variables para el control de gestos táctiles
-        let initialDistance = 0; // Para Pinch-to-Zoom
+        let initialDistance = 0; 
         let initialScale = 1.0;
-        let initialAngle = 0; // Para Rotación (NUEVO)
+        let initialAngle = 0; 
         
         // Configuración de Modelos (URLs de ejemplos de Three.js)
         const MODELS = {
@@ -184,90 +182,88 @@
             BoomBox: 'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/BoomBox/glTF/BoomBox.gltf'
         };
 
-        // --- FUNCIONES DE INTERFAZ Y UTILIDAD (SIN CAMBIOS SIGNIFICATIVOS) ---
-
-        window.toggleControlPanel = function() {
-            const panel = document.getElementById('control-panel');
-            const menuIcon = document.getElementById('menu-icon');
-            const closeIcon = document.getElementById('close-icon');
-
-            isPanelVisible = !isPanelVisible;
-
-            if (isPanelVisible) {
-                panel.classList.add('is-visible');
-                menuIcon.classList.add('hidden');
-                closeIcon.classList.remove('hidden');
-            } else {
-                panel.classList.remove('is-visible');
-                menuIcon.classList.remove('hidden');
-                closeIcon.classList.add('hidden');
-            }
-        };
-
-        window.toggleModelSelector = function(show) {
-            const modal = document.getElementById('model-selector-modal');
-            if (show) {
-                modal.classList.remove('pointer-events-none', 'opacity-0');
-                modal.classList.add('opacity-100');
-            } else {
-                modal.classList.remove('opacity-100');
-                modal.classList.add('pointer-events-none', 'opacity-0');
-            }
-        };
-
-        window.showAlert = function(message) {
-            clearTimeout(alertTimeout);
-            const alertBox = document.getElementById('custom-alert');
-            document.getElementById('alert-message').textContent = message;
-
-            // Mostrar
-            alertBox.classList.remove('opacity-0', 'pointer-events-none');
-            alertBox.classList.add('opacity-100', 'pointer-events-auto');
-
-            // Ocultar automáticamente
-            alertTimeout = setTimeout(() => {
-                alertBox.classList.remove('opacity-100', 'pointer-events-auto');
-                alertBox.classList.add('opacity-0', 'pointer-events-none');
-            }, 3000);
-        }
-
-        // --- FUNCIONES DE TRES.JS (SIN CAMBIOS SIGNIFICATIVOS) ---
+        // --- FUNCIONES DE TRES.JS ---
 
         function initThree() {
-            // ... (Código de inicialización de Three.js) ...
+            // 1. Scene
             scene = new THREE.Scene();
+            
+            // 2. Camera
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.set(0, 0, 0); 
             camera.updateProjectionMatrix();
 
+            // 3. Renderer
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setClearColor(0x3b4233, 1); 
             document.getElementById('three-container').appendChild(renderer.domElement);
+            
+            // *** ILUSIÓN DE ANCLAJE: Habilitar Sombras ***
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap; 
 
+            // 4. Lighting
             const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
             scene.add(ambientLight);
+            
+            // Luz Direccional que proyecta sombras
             const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-            directionalLight.position.set(5, 5, 5);
+            directionalLight.position.set(5, 10, 5); 
+            directionalLight.castShadow = true; 
+            
+            // Ajustar parámetros de la sombra (opcional)
+            directionalLight.shadow.mapSize.width = 1024;
+            directionalLight.shadow.mapSize.height = 1024;
+            directionalLight.shadow.camera.near = 0.5;
+            directionalLight.shadow.camera.far = 50;
+            directionalLight.shadow.camera.left = -5;
+            directionalLight.shadow.camera.right = 5;
+            directionalLight.shadow.camera.top = 5;
+            directionalLight.shadow.camera.bottom = -5;
+
             scene.add(directionalLight);
 
+            // 5. Ground Plane (¡LA TRAMPA!)
+            const planeGeometry = new THREE.PlaneGeometry(20, 20); // Un plano grande
+            const planeMaterial = new THREE.MeshStandardMaterial({
+                color: 0x000000, 
+                opacity: 0.1, // Baja opacidad para que sea casi invisible
+                transparent: true,
+                alphaTest: 0.0,
+                side: THREE.DoubleSide
+            });
+            const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+            plane.rotation.x = -Math.PI / 2; // Rotar para que sea el suelo (eje X)
+            
+            // El plano debe estar LIGERAMENTE por debajo del modelo para que la sombra caiga correctamente.
+            plane.position.y = -0.5; 
+            
+            plane.receiveShadow = true; // El plano recibe la sombra, pero es casi invisible.
+            plane.name = "GroundPlane";
+            scene.add(plane);
+
+
+            // 6. Controls
             controls = new THREE.OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
             controls.target.set(0, 0, -2); 
             controls.update(); 
             
+            // 7. Model Container
             modelContainer = new THREE.Group();
             scene.add(modelContainer);
 
+            // 8. Loaders
             gltfLoader = new THREE.GLTFLoader();
             
+            // 9. Event Listeners
             window.addEventListener('resize', onWindowResize, false);
             onWindowResize(); 
 
             deviceOrientationControls = new THREE.DeviceOrientationControls(camera);
             
-            // 10. Listeners para Gestos Táctiles
             renderer.domElement.addEventListener('touchstart', onTouchStart, false);
             renderer.domElement.addEventListener('touchmove', onTouchMove, false);
             renderer.domElement.addEventListener('touchend', onTouchEnd, false);
@@ -295,7 +291,7 @@
 
         window.selectModel = function(modelName) {
             document.getElementById('current-model').textContent = modelName;
-            window.toggleModelSelector(false); // Cerrar modal
+            window.toggleModelSelector(false); 
 
             if (currentModel) {
                 modelContainer.remove(currentModel);
@@ -313,15 +309,27 @@
                 function(gltf) {
                     currentModel = gltf.scene;
                     
-                    // Centrar y escalar el modelo (¡Esto define el pivote sobre el objeto!)
+                    // Centrar y escalar el modelo (pivote sobre el objeto)
                     const box = new THREE.Box3().setFromObject(currentModel);
                     const center = box.getCenter(new THREE.Vector3());
-                    currentModel.position.sub(center); // Centrar el modelo en su origen
+                    currentModel.position.sub(center); 
                     
                     const size = box.getSize(new THREE.Vector3());
                     const maxDim = Math.max(size.x, size.y, size.z);
-                    const scaleFactor = 1.5 / maxDim; // Escalar para que sea visible
+                    const scaleFactor = 1.5 / maxDim; 
                     currentModel.scale.set(scaleFactor, scaleFactor, scaleFactor);
+                    
+                    // *** ILUSIÓN DE ANCLAJE: Marcar el modelo para proyectar sombras ***
+                    currentModel.traverse(function(object) {
+                        if (object.isMesh) {
+                            object.castShadow = true;
+                            object.receiveShadow = false; 
+                        }
+                    });
+
+                    // La posición Y del modelo se ajusta para que el centro de su base esté sobre el plano (Y=0)
+                    const yOffset = box.min.y * scaleFactor; 
+                    currentModel.position.y = -yOffset;
                     
                     // Añadir al contenedor
                     modelContainer.add(currentModel);
@@ -338,31 +346,12 @@
             );
         };
         
-        window.toggleInteractionMode = function() {
-            if (controls.enabled) {
-                // Cambiar a Modo Mover
-                controls.enabled = false;
-                document.getElementById('lock-status').textContent = 'ON (Mover)';
-                renderer.domElement.addEventListener('pointerdown', onPointerDown, false);
-                showAlert('Modo Mover activado. Arrastra el modelo directamente.');
-            } else {
-                // Cambiar a Modo Rotar
-                controls.enabled = true;
-                document.getElementById('lock-status').textContent = 'OFF (Rotar)';
-                renderer.domElement.removeEventListener('pointerdown', onPointerDown, false);
-                renderer.domElement.removeEventListener('pointermove', onPointerMove, false);
-                renderer.domElement.removeEventListener('pointerup', onPointerUp, false);
-                showAlert('Modo Rotar activado. Usa los OrbitControls.');
-            }
-        };
-
-        // --- LÓGICA DE DRAG AND DROP DIRECTO (Modo Mover) ---
+        // --- LÓGICA DE DRAG AND DROP DIRECTO (Modo Mover - NO MODIFICADO) ---
         let dragObject = null;
         const pointer = new THREE.Vector2();
         const raycaster = new THREE.Raycaster();
 
         function onPointerDown(event) {
-            // Prevenir drag si estamos en modo AR con rastreo de movimiento
             if (isARMode && isMotionTrackingActive) return; 
 
             pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
@@ -370,11 +359,10 @@
 
             raycaster.setFromCamera(pointer, camera);
 
-            // Solo interactuar con el modelo actual (y sus hijos)
             const intersects = raycaster.intersectObjects(currentModel.children, true);
 
             if (intersects.length > 0) {
-                dragObject = modelContainer; // Arrastramos el contenedor, no el modelo interno
+                dragObject = modelContainer; 
                 renderer.domElement.addEventListener('pointermove', onPointerMove, false);
                 renderer.domElement.addEventListener('pointerup', onPointerUp, false);
                 showAlert('Arrastrando modelo...');
@@ -388,22 +376,32 @@
 
                 raycaster.setFromCamera(pointer, camera);
 
-                // Crear un plano imaginario donde se 'mueve' el objeto
-                const plane = new THREE.Plane(camera.position.clone().normalize(), 0);
+                // El "plano" de arrastre debe ser el GroundPlane para mantener el efecto AR
+                const groundPlane = scene.getObjectByName('GroundPlane');
+                if (!groundPlane) return;
+                
                 const intersectionPoint = new THREE.Vector3();
                 
-                // Proyectar el rayo sobre el plano imaginario
-                if (raycaster.ray.intersectPlane(plane, intersectionPoint)) {
-                    // Simple movimiento de offset
-                    const deltaX = event.movementX * 0.005; 
-                    const deltaY = event.movementY * 0.005;
-                    dragObject.position.x += deltaX;
-                    dragObject.position.y -= deltaY;
+                // Usamos la intersección con el plano de tierra para arrastrar
+                const intersectsGround = raycaster.intersectObject(groundPlane);
+                
+                if (intersectsGround.length > 0) {
+                    // Mover el contenedor a la posición de la intersección en el plano
+                    // Ajustamos Z para mantenerlo a una distancia razonable de la cámara (ilusión de anclaje)
+                    dragObject.position.x = intersectsGround[0].point.x;
+                    // Mantenemos Y constante o ajustamos a la altura inicial (Y=0 del plano)
+                    dragObject.position.y = intersectsGround[0].point.y + 0.5; // Ajuste por la altura del plano
+                    dragObject.position.z = intersectsGround[0].point.z;
                     
-                    // Actualizar sliders (solo si estamos en modo AR, para reflejar el movimiento)
+                    // Simulación: Si el objeto se mueve, se restablece Z a la distancia frontal si se sale del plano de visión
+                    if (dragObject.position.z > -0.5) {
+                        dragObject.position.z = -2; // Mantener delante de la cámara
+                    }
+                    
+                    // Actualizar sliders para reflejar el movimiento
                     if (isARMode) {
-                        document.getElementById('ar-x-slider').value = dragObject.position.x;
-                        document.getElementById('ar-y-slider').value = dragObject.position.y;
+                        document.getElementById('ar-x-slider').value = dragObject.position.x.toFixed(1);
+                        document.getElementById('ar-y-slider').value = dragObject.position.y.toFixed(1);
                         document.getElementById('ar-x-value').textContent = dragObject.position.x.toFixed(1);
                         document.getElementById('ar-y-value').textContent = dragObject.position.y.toFixed(1);
                     }
@@ -417,7 +415,7 @@
             renderer.domElement.removeEventListener('pointerup', onPointerUp, false);
         }
         
-        // --- LÓGICA DE GESTOS TÁCTILES (PINCH-TO-ZOOM Y ROTACIÓN) ---
+        // --- LÓGICA DE GESTOS TÁCTILES (PINCH-TO-ZOOM Y ROTACIÓN - NO MODIFICADO) ---
         
         function getTouchDistance(touches) {
             const dx = touches[0].pageX - touches[1].pageX;
@@ -425,7 +423,6 @@
             return Math.sqrt(dx * dx + dy * dy);
         }
         
-        // **NUEVA FUNCIÓN** para obtener el ángulo entre dos dedos
         function getTouchAngle(touches) {
             const dx = touches[0].pageX - touches[1].pageX;
             const dy = touches[0].pageY - touches[1].pageY;
@@ -434,7 +431,7 @@
 
         function onTouchStart(event) {
             if (isARMode && event.touches.length === 2) {
-                event.preventDefault(); // Prevenir browser defaults
+                event.preventDefault(); 
 
                 // 1. Zoom (Pinch-to-Zoom)
                 initialDistance = getTouchDistance(event.touches);
@@ -447,7 +444,7 @@
 
         function onTouchMove(event) {
             if (isARMode && event.touches.length === 2) {
-                event.preventDefault(); // Prevenir el scroll/pan del navegador
+                event.preventDefault(); 
 
                 // 1. Zoom (Pinch-to-Zoom)
                 const currentDistance = getTouchDistance(event.touches);
@@ -460,52 +457,57 @@
 
                 modelContainer.scale.set(newScale, newScale, newScale);
                 
-                // 2. Rotación (Twist Gesture) - ¡Implementación del gesto de giro!
+                // 2. Rotación (Twist Gesture) 
                 const currentAngle = getTouchAngle(event.touches);
                 
                 let deltaAngle = currentAngle - initialAngle;
                 
-                // Manejar la envoltura (wrap-around) cuando se cruza el límite de -PI a PI
                 if (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
                 if (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
 
-                // Aplicar rotación al contenedor del modelo (eje Y = vertical)
-                // Se usa un factor de 1.5 para una rotación más sensible/rápida.
                 modelContainer.rotation.y += deltaAngle * 1.5; 
                 
-                // Actualizar el ángulo inicial para el siguiente evento de movimiento
                 initialAngle = currentAngle;
             }
             
-            // Lógica para arrastrar con un solo dedo (si no hay rastreo de movimiento y el control está desactivado)
-            if (event.touches.length === 1 && !isMotionTrackingActive && controls.enabled === false && dragObject) {
-                 // Puedes simular onPointerMove aquí si el browser no lo maneja automáticamente
-                 // Para simplicidad y compatibilidad con PointerEvents, se deja el uso de dragObject que se setea en onPointerDown
+            // Simular arrastre para un solo dedo si el modo drag está activo
+            if (event.touches.length === 1 && !isMotionTrackingActive && controls.enabled === false) {
+                // Generamos un evento de puntero para que la función onPointerMove lo maneje
+                if (dragObject) {
+                    const fakeEvent = {
+                        clientX: event.touches[0].clientX,
+                        clientY: event.touches[0].clientY,
+                        movementX: event.touches[0].clientX - (event.touches[0].previousClientX || event.touches[0].clientX),
+                        movementY: event.touches[0].clientY - (event.touches[0].previousClientY || event.touches[0].clientY)
+                    };
+                    
+                    // Almacenar posición anterior para el cálculo de movementX/Y en el siguiente ciclo
+                    event.touches[0].previousClientX = event.touches[0].clientX;
+                    event.touches[0].previousClientY = event.touches[0].clientY;
+
+                    // Llama a la lógica de movimiento usando la intersección del plano de tierra.
+                    onPointerMove(fakeEvent);
+                }
             }
         }
 
         function onTouchEnd() {
-            // Restablecer variables para terminar el gesto
             initialDistance = 0;
             initialScale = 1.0;
             initialAngle = 0;
+            dragObject = null; // Necesario para finalizar el arrastre táctil
         }
 
 
-        // --- LÓGICA DE AR (Modo Pared) ---
+        // --- LÓGICA DE AR (Modo Pared - SIN CAMBIOS CLAVE) ---
         
-        // ... (Funciones startCameraPassThrough, stopCameraPassThrough, toggleARMode sin cambios) ...
         window.startCameraPassThrough = async function() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { 
-                        facingMode: 'environment' // Cámara trasera
-                    } 
-                });
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
                 videoElement.srcObject = stream;
                 videoElement.style.display = 'block';
                 videoElement.play();
-                renderer.setClearColor(0x000000, 0); // Hacer el canvas transparente
+                renderer.setClearColor(0x000000, 0); 
                 renderer.domElement.style.zIndex = 10;
                 showAlert('Cámara activada.');
                 return true;
@@ -522,7 +524,7 @@
             }
             videoElement.srcObject = null;
             videoElement.style.display = 'none';
-            renderer.setClearColor(0x3b4233, 1); // Restablecer fondo por defecto
+            renderer.setClearColor(0x3b4233, 1); 
             renderer.domElement.style.zIndex = 10;
             showAlert('Cámara desactivada.');
         };
@@ -542,15 +544,13 @@
                     toggleBtn.classList.remove('bg-red-500', 'hover:bg-red-600');
                     toggleBtn.classList.add('bg-green-600', 'hover:bg-green-700');
                     
-                    // Deshabilitar OrbitControls, y pasar al modo 'Mover' (drag)
                     controls.enabled = false;
                     document.getElementById('lock-status').textContent = 'ON (Mover)';
                     renderer.domElement.addEventListener('pointerdown', onPointerDown, false);
                     
-                    // Activar el rastreo de movimiento por defecto al entrar en AR 
                     toggleMotionTracking(true); 
                 } else {
-                    isARMode = false; // Falló la activación
+                    isARMode = false; 
                 }
             } else {
                 stopCameraPassThrough();
@@ -560,14 +560,12 @@
                 toggleBtn.classList.add('bg-red-500', 'hover:bg-red-600');
                 toggleBtn.classList.remove('bg-green-600', 'hover:bg-green-700');
 
-                // Restablecer OrbitControls
                 controls.enabled = true;
                 document.getElementById('lock-status').textContent = 'OFF (Rotar)';
                 renderer.domElement.removeEventListener('pointerdown', onPointerDown, false);
                 renderer.domElement.removeEventListener('pointermove', onPointerMove, false);
                 renderer.domElement.removeEventListener('pointerup', onPointerUp, false);
                 
-                // Desactivar rastreo de movimiento
                 toggleMotionTracking(false);
             }
         };
@@ -584,7 +582,6 @@
             }
 
             if (isMotionTrackingActive) {
-                // Pedir permiso y activar el rastreador de orientación
                 if (typeof DeviceOrientationEvent.requestPermission === 'function') {
                     DeviceOrientationEvent.requestPermission()
                         .then(permissionState => {
@@ -605,7 +602,6 @@
                             showAlert('Tu dispositivo no soporta el Rastreo de Movimiento.');
                         });
                 } else {
-                    // Navegadores que no necesitan requestPermission (Android)
                     window.addEventListener('deviceorientation', deviceOrientationControls.onDeviceOrientationChange, false);
                     motionBtn.textContent = 'Desactivar Rastreo de Rotación';
                     motionBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
@@ -613,13 +609,11 @@
                     showAlert('Rastreo de Movimiento ACTIVADO.');
                 }
             } else {
-                // Desactivar rastreo de orientación
                 window.removeEventListener('deviceorientation', deviceOrientationControls.onDeviceOrientationChange, false);
                 motionBtn.textContent = 'Activar Rastreo de Rotación';
                 motionBtn.classList.remove('bg-red-500', 'hover:bg-red-600');
                 motionBtn.classList.add('bg-green-500', 'hover:bg-green-600');
                 
-                // Limpiar la rotación de la cámara (para volver a la orientación original)
                 camera.rotation.set(0, 0, 0); 
                 camera.updateProjectionMatrix();
 
@@ -634,12 +628,11 @@
             const y = parseFloat(document.getElementById('ar-y-slider').value);
             const zRot = parseFloat(document.getElementById('ar-z-slider').value) * (Math.PI / 180);
 
-            // Actualizar la posición y rotación del contenedor del modelo
-            // Z=-2 lo coloca 2 unidades delante de la cámara (que está en 0, 0, 0)
-            modelContainer.position.set(x, y, -2); 
+            // Posicionamiento manual del modelo en el espacio 3D
+            // El GroundPlane está en Y = 0 (ajustado por la posición del objeto en selectModel)
+            modelContainer.position.set(x, y, -2); // Z=-2 es la distancia por defecto en AR
             modelContainer.rotation.z = zRot;
             
-            // Actualizar valores de la UI
             document.getElementById('ar-x-value').textContent = x.toFixed(1);
             document.getElementById('ar-y-value').textContent = y.toFixed(1);
             document.getElementById('ar-z-value').textContent = (zRot * (180 / Math.PI)).toFixed(0);
@@ -647,12 +640,10 @@
         
         window.adjustScale = function(delta) {
             if (modelContainer) {
-                // Aplicar el ajuste de escala al contenedor
                 modelContainer.scale.x += delta;
                 modelContainer.scale.y += delta;
                 modelContainer.scale.z += delta;
                 
-                // Asegurar que la escala no sea negativa
                 modelContainer.scale.x = Math.max(0.1, modelContainer.scale.x);
                 modelContainer.scale.y = Math.max(0.1, modelContainer.scale.y);
                 modelContainer.scale.z = Math.max(0.1, modelContainer.scale.z);
@@ -665,21 +656,17 @@
         // --- Ejecución Principal ---
         window.onload = function() {
             initThree();
-            selectModel('Duck'); // Cargar modelo por defecto
+            selectModel('Duck'); 
 
-            // Inicializar el modal de selección como oculto
             toggleModelSelector(false);
 
-            // Ocultar controles de AR y establecer estado inicial
             document.getElementById('placement-controls').classList.add('hidden'); 
             isARMode = false;
             document.getElementById('ar-mode-status').textContent = 'Inactivo';
 
-            // Inicializar estado de 'Mover Modelo' como OFF (Rotar)
             controls.enabled = true; 
             document.getElementById('lock-status').textContent = 'OFF (Rotar)';
             
-            // Establecer el estado inicial del panel como oculto y mostrar el icono de menú
             document.getElementById('control-panel').classList.remove('is-visible');
             document.getElementById('menu-icon').classList.remove('hidden');
             document.getElementById('close-icon').classList.add('hidden');
