@@ -1,425 +1,531 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Professional 3D Model Viewer</title>
-    <!-- Load Tailwind CSS for modern styling -->
+    <title>Visor 3D Interactivo Elegante</title>
+    <!-- Carga de Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Carga de Three.js y dependencias -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/GLTFLoader.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        /* Base styles and custom scrollbar for dark theme */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a; /* dark-bg */
+            overflow: hidden; /* Prevent scrolling */
+        }
+        /* Custom scrollbar for control panel */
+        .glass-panel::-webkit-scrollbar {
+            width: 8px;
+        }
+        .glass-panel::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+        .glass-panel::-webkit-scrollbar-thumb {
+            background: rgba(79, 70, 229, 0.7); /* accent-color */
+            border-radius: 10px;
+        }
+        .glass-panel::-webkit-scrollbar-thumb:hover {
+            background: #4f46e5;
+        }
+    </style>
     <script>
-        // Configure Tailwind to use Inter font and enable dark mode
+        // Configuración de Tailwind para colores personalizados
         tailwind.config = {
             theme: {
                 extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                    },
                     colors: {
-                        'primary': '#4f46e5', // Indigo
-                        'secondary': '#1e293b', // Slate-800
-                        'dark-bg': '#0f172a', // Slate-900
-                        'card-bg': '#1e293b', // Slate-800
+                        'dark-bg': '#0f172a',
+                        'card-bg': 'rgba(46, 52, 64, 0.95)',
+                        'accent-color': '#4f46e5', // Indigo
                     }
                 }
             }
         }
     </script>
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            margin: 0;
-            overflow: hidden; /* Prevent scrolling */
-        }
-        #viewer-container {
-            width: 100%;
-            height: 100vh;
-            position: absolute;
-            top: 0;
-            left: 0;
-        }
-        canvas {
-            display: block;
-        }
-        .control-panel {
-            z-index: 10;
-        }
-        /* Custom scrollbar for the carousel for a cleaner look */
-        .carousel-container::-webkit-scrollbar {
-            height: 6px;
-        }
-        .carousel-container::-webkit-scrollbar-track {
-            background: #1e293b;
-            border-radius: 3px;
-        }
-        .carousel-container::-webkit-scrollbar-thumb {
-            background: #4f46e5;
-            border-radius: 3px;
-        }
-        .carousel-item {
-            transition: transform 0.3s ease, opacity 0.3s ease;
-        }
-        .carousel-item:hover {
-            transform: translateY(-5px);
-        }
-        .carousel-item.active {
-            border: 3px solid #4f46e5;
-            box-shadow: 0 0 15px rgba(79, 70, 229, 0.8);
-        }
-        /* Hidden video element for camera feed */
-        #video-background {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            z-index: -10;
-            display: none; /* Controlled by JS */
-        }
-    </style>
 </head>
 <body class="bg-dark-bg text-white">
 
-    <!-- Video Element for Camera Feed -->
-    <video id="video-background" autoplay playsinline></video>
+    <!-- Contenedor principal de la aplicación -->
+    <div id="app-container" class="w-screen h-screen relative">
+        <!-- Canvas de Three.js (será inicializado por JS) -->
+        <div id="three-canvas-container" class="w-full h-full"></div>
 
-    <!-- Three.js Viewer Container -->
-    <div id="viewer-container"></div>
+        <!-- 1. Alerta Personalizada (Notificación) -->
+        <div id="alert-box" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 p-4 rounded-xl shadow-2xl z-50 transition-opacity duration-300 pointer-events-none opacity-0
+            bg-card-bg backdrop-blur-md border border-gray-700/50" role="alert">
+            <p id="alert-message" class="text-white text-lg font-semibold"></p>
+        </div>
 
-    <!-- Main UI Overlay -->
-    <div class="fixed top-0 left-0 w-full h-full pointer-events-none p-4 flex flex-col justify-between">
+        <!-- 2. Botón de Menú (Hamburguesa) - Superior Izquierda -->
+        <button id="menu-toggle-btn"
+            class="fixed top-4 left-4 p-3 bg-accent-color rounded-full shadow-lg hover:bg-indigo-600 transition duration-200 z-30"
+            onclick="togglePanelVisibility()">
+            <!-- Icono de Hamburguesa (SVG de lucide-react, simulado) -->
+            <svg id="menu-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-white">
+                <line x1="4" y1="12" x2="20" y2="12"></line>
+                <line x1="4" y1="6" x2="20" y2="6"></line>
+                <line x1="4" y1="18" x2="20" y2="18"></line>
+            </svg>
+            <!-- Icono de Cierre (X) - Oculto inicialmente -->
+            <svg id="close-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-white hidden">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
 
-        <!-- Top Controls Panel (Hamburger Menu on Left) -->
-        <div class="fixed top-4 left-4 pointer-events-none z-20">
-            <!-- Menu Toggle Button (Hamburger) -->
-            <button id="menuToggleBtn" class="pointer-events-auto bg-primary hover:bg-indigo-600 text-white p-3 rounded-lg shadow-xl transition duration-200 focus:outline-none">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
-            </button>
 
-            <!-- Control Panel Content (initially hidden on mobile, or managed by JS) -->
-            <div id="controlPanel" class="control-panel mt-3 pointer-events-auto bg-card-bg/90 p-4 rounded-lg shadow-2xl backdrop-blur-sm hidden">
-                <h2 class="text-lg font-bold mb-3 text-primary">Controles del Visor</h2>
-                <div class="flex flex-col space-y-3">
-                    <!-- Zoom and Scale -->
-                    <div class="flex space-x-2">
-                        <button onclick="zoomCamera(0.8)" class="flex-1 bg-primary hover:bg-indigo-600 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Acercar</button>
-                        <button onclick="zoomCamera(1.2)" class="flex-1 bg-primary hover:bg-indigo-600 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Alejar</button>
-                    </div>
-                    <div class="flex space-x-2">
-                        <button onclick="scaleModel(1.1)" class="flex-1 bg-secondary hover:bg-slate-700 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Aumentar Escala</button>
-                        <button onclick="scaleModel(0.9)" class="flex-1 bg-secondary hover:bg-slate-700 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Reducir Escala</button>
-                    </div>
+        <!-- 3. Panel de Controles (Glassmorphism) - Superior Izquierda -->
+        <div id="control-panel"
+             class="glass-panel fixed top-4 left-4 w-72 h-[calc(100vh-2rem)] rounded-2xl shadow-2xl p-6 z-20
+                    bg-card-bg backdrop-blur-sm border border-gray-700/50 transform -translate-x-full transition-transform duration-300 overflow-y-auto">
+            
+            <h2 class="text-2xl font-bold mb-6 text-accent-color">Controles 3D</h2>
 
-                    <!-- Rotation and Lock -->
-                    <button id="autoRotateBtn" onclick="toggleAutoRotate()" class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Rotación Automática: SÍ</button>
-                    <button id="lockModelBtn" onclick="toggleLockModel()" class="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Bloquear Modelo: NO</button>
+            <!-- Información del Modelo -->
+            <div class="mb-6 pb-4 border-b border-gray-700/50">
+                <p class="text-sm text-gray-400 mb-1">Modelo Actual:</p>
+                <p id="current-model-name" class="text-xl font-semibold">Duck</p>
+            </div>
 
-                    <!-- Background Toggle -->
-                    <button id="backgroundBtn" onclick="toggleBackground()" class="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-semibold py-2 px-3 rounded-md transition duration-200">Usar Fondo RA</button>
+            <!-- Grupo de Controles: Navegación y Zoom -->
+            <div class="mb-6">
+                <h3 class="text-lg font-semibold mb-3 border-b border-gray-700/50 pb-1">Navegación</h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <button class="control-btn" onclick="zoomCamera(1.1)">
+                        Zoom +
+                    </button>
+                    <button class="control-btn" onclick="zoomCamera(0.9)">
+                        Zoom -
+                    </button>
                 </div>
             </div>
+
+            <!-- Grupo de Controles: Escala -->
+            <div class="mb-6">
+                <h3 class="text-lg font-semibold mb-3 border-b border-gray-700/50 pb-1">Escala</h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <button class="control-btn" onclick="scaleModel(1.2)">
+                        Escala +
+                    </button>
+                    <button class="control-btn" onclick="scaleModel(0.8)">
+                        Escala -
+                    </button>
+                </div>
+            </div>
+
+            <!-- Grupo de Controles: Toggles -->
+            <div class="mb-6">
+                <h3 class="text-lg font-semibold mb-3 border-b border-gray-700/50 pb-1">Modos</h3>
+                <div class="space-y-4">
+                    <button id="toggle-rotate-btn" class="control-btn w-full" onclick="toggleAutoRotate()">
+                        Rotación Automática: <span id="auto-rotate-status">OFF</span>
+                    </button>
+                    <button id="toggle-lock-btn" class="control-btn w-full" onclick="toggleLockModel()">
+                        Bloquear Modelo: <span id="lock-status">OFF</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Grupo de Controles: Fondo / Realidad Aumentada (Modo Pared) -->
+            <div class="mb-6">
+                <h3 class="text-lg font-semibold mb-3 border-b border-gray-700/50 pb-1">Simulación AR</h3>
+                <button id="toggle-placement-btn" class="control-btn w-full bg-pink-700/80 hover:bg-pink-600" onclick="togglePlacementMode()">
+                    Modo Pared (AR): <span id="placement-status">OFF</span>
+                </button>
+                <p class="text-xs text-gray-400 mt-2 italic">Requiere permiso de la cámara.</p>
+            </div>
+            
+            <div class="text-center mt-8">
+                <p class="text-sm text-gray-500">Visor 3D Propulsado por Three.js</p>
+            </div>
+
         </div>
 
+        <!-- 4. Carrusel de Modelos (Glassmorphism) - Inferior Central -->
+        <div id="carousel"
+             class="fixed bottom-6 left-1/2 transform -translate-x-1/2 rounded-2xl shadow-2xl p-4 z-20
+                    bg-card-bg backdrop-blur-sm border border-gray-700/50 flex space-x-4 transition-all duration-300 opacity-0 pointer-events-none">
+            
+            <h3 class="text-lg font-semibold my-auto pr-4 border-r border-gray-700/50 text-gray-300">Modelos</h3>
 
-        <!-- Bottom Carousel Panel -->
-        <!-- Added id="carouselPanel" and class="hidden" to control visibility with the hamburger menu -->
-        <div id="carouselPanel" class="self-center pointer-events-auto bg-card-bg/90 p-3 rounded-t-lg shadow-2xl backdrop-blur-sm hidden">
-            <h2 class="text-md font-bold mb-2 text-primary">Carrusel de Selección de Modelo</h2>
-            <div id="carousel-container" class="carousel-container flex overflow-x-auto space-x-4 pb-1">
-                <!-- Carousel items will be injected here -->
+            <!-- Elementos del Carrusel -->
+            <div class="flex space-x-3">
+                <button class="carousel-item" data-model="Duck" onclick="selectModel('Duck')">
+                    <div class="w-16 h-16 rounded-lg bg-indigo-500/30 flex items-center justify-center text-xs font-bold ring-2 ring-accent-color transition-all">
+                        Pato
+                    </div>
+                    <span class="mt-1 text-sm">Duck</span>
+                </button>
+                <button class="carousel-item" data-model="Helmet" onclick="selectModel('Helmet')">
+                    <div class="w-16 h-16 rounded-lg bg-gray-500/30 flex items-center justify-center text-xs font-bold transition-all">
+                        Casco
+                    </div>
+                    <span class="mt-1 text-sm">Helmet</span>
+                </button>
+                <button class="carousel-item" data-model="BoomBox" onclick="selectModel('BoomBox')">
+                    <div class="w-16 h-16 rounded-lg bg-red-500/30 flex items-center justify-center text-xs font-bold transition-all">
+                        Bocina
+                    </div>
+                    <span class="mt-1 text-sm">BoomBox</span>
+                </button>
             </div>
         </div>
+
     </div>
 
-    <!-- Three.js Libraries -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-
     <script>
-        // --- Global Variables ---
-        let scene, camera, renderer, controls, loader;
-        let currentModel = null;
-        let isAutoRotating = true;
-        let isModelLocked = false;
-        let isCameraBackground = false;
+        // Definición de Clases de Botones para reutilización
+        const CONTROL_BTN_CLASSES = 'px-4 py-2 rounded-lg bg-accent-color/80 hover:bg-accent-color transition duration-200 font-medium text-sm shadow-md';
+        document.querySelectorAll('.control-btn').forEach(btn => btn.className += ' ' + CONTROL_BTN_CLASSES);
+        
+        // --- Variables de Three.js y Configuración de Posición ---
+        let scene, camera, renderer, controls;
+        let loader, currentModel = null;
+        let video = null; // Para el fondo AR
         let videoTexture = null;
-        let videoElement = document.getElementById('video-background');
-        const container = document.getElementById('viewer-container');
-        let isMenuOpen = false; // New state for menu visibility
-        // Updated model paths to use reliable CDN links for better accessibility in sandboxed environments
-        const models = [
-            { id: 1, name: 'Duck', path: 'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/Duck/glTF/Duck.gltf', thumb: 'https://placehold.co/100x100/4f46e5/white?text=Duck' },
-            { id: 2, name: 'Helmet', path: 'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf', thumb: 'https://placehold.co/100x100/1e293b/white?text=Helmet' },
-            { id: 3, name: 'Boom Box', path: 'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/BoomBox/glTF/BoomBox.gltf', thumb: 'https://placehold.co/100x100/f59e0b/white?text=Box' }
-        ];
+        
+        let isPlacementModeActive = false; // Nuevo estado global para el modo pared
 
-        // --- Core Initialization ---
-        function init() {
-            // Scene setup
+        // Rutas de los modelos glTF de ejemplo de Khronos (pueden requerir CORS)
+        const MODEL_PATHS = {
+            'Duck': 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/Duck/glTF/Duck.gltf',
+            'Helmet': 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf',
+            'BoomBox': 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/BoomBox/glTF/BoomBox.gltf'
+        };
+
+        // Constantes para posiciones de Cámara y Target
+        const DEFAULT_CAMERA_POS = new THREE.Vector3(0, 1.5, 4);
+        const DEFAULT_TARGET_POS = new THREE.Vector3(0, 0, 0);
+
+        // Configuración para el "Modo Pared" (Ilusión AR)
+        const PLACEMENT_CAMERA_POS = new THREE.Vector3(0, 1.3, 0.5); // Cámara cerca de la "pared" (Z=0.5)
+        const PLACEMENT_TARGET_POS = new THREE.Vector3(0, 1.3, -2.5); // Mirando al modelo en la "pared"
+        const PLACEMENT_MODEL_OFFSET = new THREE.Vector3(0, 0, -2.5); // El modelo se mueve a Z=-2.5 (la "pared")
+
+        // Estado del UI
+        let isPanelVisible = false;
+
+        // --- Inicialización de Three.js ---
+        function initThree() {
+            // 1. Configuración de la Escena
             scene = new THREE.Scene();
 
-            // Camera setup
-            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 1, 3);
+            // 2. Configuración de la Cámara
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.copy(DEFAULT_CAMERA_POS); // Posición inicial
 
-            // Renderer setup
+            // 3. Configuración del Renderizador
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.setClearColor(0x0f172a, 1); // Default solid background (Slate-900)
-            container.appendChild(renderer.domElement);
+            document.getElementById('three-canvas-container').appendChild(renderer.domElement);
 
-            // Lighting
+            // 4. Iluminación
             const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
             scene.add(ambientLight);
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
             directionalLight.position.set(5, 10, 7.5);
             scene.add(directionalLight);
 
-            // Controls setup
+            // 5. Controles de Órbita
             controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true; // Smooth rotation
+            controls.enableDamping = true;
             controls.dampingFactor = 0.05;
-            controls.screenSpacePanning = false; // Only pan on the screen plane
+            controls.screenSpacePanning = false;
+            controls.target.copy(DEFAULT_TARGET_POS);
 
-            // Loader setup
+            // 6. Loader
             loader = new THREE.GLTFLoader();
 
-            // Event listeners
-            window.addEventListener('resize', onWindowResize);
-            // Attach toggle function to the new hamburger button
-            document.getElementById('menuToggleBtn').addEventListener('click', toggleMenu);
-
-
-            // Load the first model by default
-            selectModel(models[0].id);
-
-            // Initialize carousel UI
-            setupCarousel();
-
-            // Start animation loop
-            animate();
+            // 7. Manejo de Redimensionamiento
+            window.addEventListener('resize', onWindowResize, false);
         }
 
-        // --- Model Loading and Management ---
-        function loadModel(modelPath) {
-            if (currentModel) {
-                scene.remove(currentModel);
-            }
-
-            // Clear existing model and show a loading indicator (optional, but good practice)
-            console.log(`Loading model: ${modelPath}`);
-
-            loader.load(modelPath, function (gltf) {
-                currentModel = gltf.scene;
-
-                // Scale and center the model
-                const box = new THREE.Box3().setFromObject(currentModel);
-                const size = box.getSize(new THREE.Vector3());
-                const center = box.getCenter(new THREE.Vector3());
-
-                // Calculate scale factor (e.g., fit to a max size of 2 units)
-                const maxDim = Math.max(size.x, size.y, size.z);
-                const scaleFactor = 2.0 / maxDim;
-                currentModel.scale.set(scaleFactor, scaleFactor, scaleFactor);
-
-                // Recalculate center after scaling for correct positioning
-                currentModel.position.sub(center.multiplyScalar(scaleFactor));
-                currentModel.position.y += size.y * scaleFactor / 2; // Lift model slightly above origin
-
-                scene.add(currentModel);
-
-            }, undefined, function (error) {
-                // IMPROVED ERROR HANDLING: Logging a more descriptive error message and showing a screen alert
-                console.error('An error occurred loading the model. This is usually due to network (CORS) issues or a bad URL. Please check the browser console network tab for details.', error);
-                alertMessage("El modelo no se pudo cargar. Se muestra un cubo de respaldo. Verifique la consola para ver detalles del error de red.");
-
-                // Fallback: Add a simple visible object if GLB fails
-                const geometry = new THREE.BoxGeometry(1, 1, 1);
-                const material = new THREE.MeshPhongMaterial({ color: 0xcccccc });
-                currentModel = new THREE.Mesh(geometry, material);
-                scene.add(currentModel);
-            });
-        }
-
-        function selectModel(modelId) {
-            const modelData = models.find(m => m.id === modelId);
-            if (modelData) {
-                loadModel(modelData.path);
-                // Update active carousel item
-                document.querySelectorAll('.carousel-item').forEach(item => {
-                    item.classList.remove('active');
-                    if (parseInt(item.dataset.modelId) === modelId) {
-                        item.classList.add('active');
-                    }
-                });
-            }
-        }
-
-        // --- Carousel UI ---
-        function setupCarousel() {
-            const carousel = document.getElementById('carousel-container');
-            carousel.innerHTML = models.map(model => `
-                <div data-model-id="${model.id}" onclick="selectModel(${model.id})"
-                     class="carousel-item flex-shrink-0 w-32 h-20 bg-card-bg rounded-lg border-2 border-transparent cursor-pointer shadow-md overflow-hidden relative">
-                    <img src="${model.thumb}" alt="${model.name}" class="w-full h-full object-cover opacity-50">
-                    <span class="absolute inset-0 flex items-center justify-center text-sm font-medium text-white p-1 text-center">${model.name}</span>
-                </div>
-            `).join('');
-
-            // Set initial active state
-            if (models.length > 0) {
-                document.querySelector(`[data-model-id="${models[0].id}"]`).classList.add('active');
-            }
-        }
-
-        // --- Animation Loop ---
-        function animate() {
-            requestAnimationFrame(animate);
-
-            if (isAutoRotating && currentModel && !isModelLocked) {
-                currentModel.rotation.y += 0.005;
-            }
-
-            controls.update();
-            renderer.render(scene, camera);
-        }
-
-        // --- Utility Functions ---
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        // --- Control Functions ---
-
-        function toggleMenu() {
-            const controlPanel = document.getElementById('controlPanel');
-            const carouselPanel = document.getElementById('carouselPanel'); // Panel del carrusel
-
-            isMenuOpen = !isMenuOpen;
-
-            if (isMenuOpen) {
-                controlPanel.classList.remove('hidden');
-                carouselPanel.classList.remove('hidden'); // Mostrar carrusel
-            } else {
-                controlPanel.classList.add('hidden');
-                carouselPanel.classList.add('hidden'); // Ocultar carrusel
-            }
+        // --- Bucle de Animación ---
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update(); // Necesario si controls.enableDamping está activado
+            if (videoTexture) videoTexture.needsUpdate = true; // Actualizar textura de video si está activa
+            renderer.render(scene, camera);
         }
+        
+        // --- Funcionalidad de Carga de Modelos ---
+        function loadModel(url, modelName) {
+            alertMessage(`Cargando modelo: ${modelName}...`);
 
-        function zoomCamera(factor) {
-            const newDistance = controls.getDistance() * factor;
-            // Prevent zooming too far in or out
-            if (newDistance > 0.5 && newDistance < 10) {
-                camera.position.lerp(controls.target.clone().add(camera.position.clone().sub(controls.target).normalize().multiplyScalar(newDistance)), 0.3);
-                controls.update();
-            }
-        }
-
-        function scaleModel(factor) {
+            // 1. Remover modelo anterior
             if (currentModel) {
-                // Smooth scaling
-                const targetScale = currentModel.scale.clone().multiplyScalar(factor);
-                currentModel.scale.lerp(targetScale, 0.3);
+                scene.remove(currentModel);
+                currentModel = null;
+            }
+
+            // 2. Cargar nuevo modelo
+            loader.load(
+                url,
+                (gltf) => {
+                    currentModel = gltf.scene;
+                    
+                    // Centrar y escalar el modelo para que encaje
+                    const box = new THREE.Box3().setFromObject(currentModel);
+                    const size = box.getSize(new THREE.Vector3()).length();
+                    const center = box.getCenter(new THREE.Vector3());
+                    
+                    currentModel.position.sub(center); // Centrar el pivote del modelo en (0,0,0)
+
+                    // Escalar el modelo para que se vea bien
+                    const scaleFactor = 4 / size; 
+                    currentModel.scale.set(scaleFactor, scaleFactor, scaleFactor);
+                    
+                    scene.add(currentModel);
+                    
+                    // Si el modo pared está activo, aplicar inmediatamente el desplazamiento
+                    if (isPlacementModeActive) {
+                        currentModel.position.copy(PLACEMENT_MODEL_OFFSET);
+                    } else {
+                        // Asegurar posición central en modo normal
+                        currentModel.position.set(0, 0, 0);
+                    }
+
+                    alertMessage(`Modelo "${modelName}" cargado con éxito.`);
+                },
+                (xhr) => {
+                    // Progreso de carga
+                    // console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+                },
+                (error) => {
+                    console.error('Error cargando modelo:', error);
+                    alertMessage(`ERROR: No se pudo cargar el modelo "${modelName}".`, 'error');
+                }
+            );
+        }
+
+        function selectModel(modelName) {
+            const url = MODEL_PATHS[modelName];
+            if (url) {
+                loadModel(url, modelName);
+                document.getElementById('current-model-name').textContent = modelName;
+                
+                // Actualizar estilo del carrusel para indicar el modelo activo
+                document.querySelectorAll('.carousel-item > div').forEach(div => {
+                    div.classList.remove('ring-2', 'ring-accent-color');
+                });
+                document.querySelector(`[data-model="${modelName}"] > div`).classList.add('ring-2', 'ring-accent-color');
+
+            } else {
+                alertMessage('Modelo no encontrado.', 'error');
             }
         }
 
-        function toggleAutoRotate() {
-            isAutoRotating = !isAutoRotating;
-            const btn = document.getElementById('autoRotateBtn');
-            btn.textContent = `Rotación Automática: ${isAutoRotating ? 'SÍ' : 'NO'}`;
-            btn.classList.toggle('bg-green-600', isAutoRotating);
-            btn.classList.toggle('bg-gray-500', !isAutoRotating);
+        // --- Funcionalidad de Controles UI ---
+        
+        // 1. Alternar Visibilidad del Panel y Carrusel
+        function togglePanelVisibility() {
+            const panel = document.getElementById('control-panel');
+            const carousel = document.getElementById('carousel');
+            const menuIcon = document.getElementById('menu-icon');
+            const closeIcon = document.getElementById('close-icon');
+
+            isPanelVisible = !isPanelVisible;
+
+            if (isPanelVisible) {
+                // Mostrar panel y carrusel
+                panel.classList.remove('-translate-x-full');
+                carousel.classList.remove('opacity-0', 'pointer-events-none');
+                carousel.classList.add('opacity-100', 'pointer-events-auto');
+                menuIcon.classList.add('hidden');
+                closeIcon.classList.remove('hidden');
+            } else {
+                // Ocultar panel y carrusel
+                panel.classList.add('-translate-x-full');
+                carousel.classList.remove('opacity-100', 'pointer-events-auto');
+                carousel.classList.add('opacity-0', 'pointer-events-none');
+                menuIcon.classList.remove('hidden');
+                closeIcon.classList.add('hidden');
+            }
         }
 
-        function toggleLockModel() {
-            isModelLocked = !isModelLocked;
-            const btn = document.getElementById('lockModelBtn');
-            btn.textContent = `Bloquear Modelo: ${isModelLocked ? 'SÍ' : 'NO'}`;
-            btn.classList.toggle('bg-red-600', !isModelLocked);
-            btn.classList.toggle('bg-blue-600', isModelLocked);
-
-            // Disabling controls prevents the user from manually rotating the camera
-            controls.enabled = !isModelLocked;
-
-            // Optional: When locking the model, reset camera view to front
-            if (isModelLocked) {
-                // NOTA: La escala del modelo (currentModel.scale) se PRESERVA intencionalmente
-                // para que el modelo mantenga el tamaño que el usuario le dio antes del bloqueo.
-                camera.position.set(0, 1, 3);
-                controls.target.set(0, 0, 0);
+        // 2. Zoom de Cámara (Aplica en ambos modos, afectando la distancia al target)
+        function zoomCamera(factor) {
+            if (!controls) return;
+            
+            // Usar la posición actual como referencia, manteniendo el target
+            const currentDistance = camera.position.distanceTo(controls.target);
+            const newDistance = currentDistance * factor;
+            
+            // Límite para evitar zoom excesivo
+            if (newDistance > 0.5 && newDistance < 100) {
+                const direction = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
+                camera.position.copy(controls.target).add(direction.multiplyScalar(newDistance));
                 controls.update();
+                alertMessage(factor > 1 ? 'Acercando Zoom' : 'Alejando Zoom');
+            } else {
+                alertMessage('Límite de Zoom alcanzado.', 'info');
             }
         }
 
-        // --- Camera Background Feature ---
-        async function toggleBackground() {
-            isCameraBackground = !isCameraBackground;
-            const btn = document.getElementById('backgroundBtn');
+        // 3. Escala del Modelo
+        function scaleModel(factor) {
+            if (!currentModel) {
+                alertMessage('Cargue un modelo primero.', 'warning');
+                return;
+            }
+            currentModel.scale.multiplyScalar(factor);
+            alertMessage(factor > 1 ? 'Aumentando Escala' : 'Reduciendo Escala');
+        }
 
-            if (isCameraBackground) {
-                // Attempt to start camera stream
+        // 4. Rotación Automática
+        function toggleAutoRotate() {
+            controls.autoRotate = !controls.autoRotate;
+            const statusText = controls.autoRotate ? 'ON' : 'OFF';
+            document.getElementById('auto-rotate-status').textContent = statusText;
+            alertMessage(`Rotación Automática: ${statusText}`);
+        }
+
+        // 5. Bloquear Modelo (Desactivar OrbitControls)
+        function toggleLockModel() {
+            controls.enabled = !controls.enabled;
+            const statusText = controls.enabled ? 'OFF' : 'ON'; // ON cuando controls está DESHABILITADO
+            document.getElementById('lock-status').textContent = controls.enabled ? 'OFF' : 'ON';
+            alertMessage(`Modelo Bloqueado: ${controls.enabled ? 'NO' : 'SÍ'}`);
+        }
+        
+        // 6. Modo Pared (Simulación AR)
+        async function togglePlacementMode() {
+            const btn = document.getElementById('toggle-placement-btn');
+            const status = document.getElementById('placement-status');
+
+            if (isPlacementModeActive) {
+                // --- Desactivar Modo Colocación ---
+                isPlacementModeActive = false;
+                
+                // 1. Detener Video/Cámara
+                if (video && video.srcObject) {
+                    video.srcObject.getTracks().forEach(track => track.stop());
+                }
+                video = null;
+                videoTexture = null;
+
+                // 2. Restaurar Escena
+                scene.background = new THREE.Color(0x0f172a); 
+                
+                // 3. Restaurar Cámara y Modelo
+                camera.position.copy(DEFAULT_CAMERA_POS);
+                controls.target.copy(DEFAULT_TARGET_POS);
+                controls.update();
+                if (currentModel) currentModel.position.set(0, 0, 0);
+                
+                // 4. Actualizar UI
+                status.textContent = 'OFF';
+                btn.classList.remove('bg-green-600', 'hover:bg-green-500');
+                btn.classList.add('bg-pink-700/80', 'hover:bg-pink-600');
+                alertMessage('Modo Pared Desactivado.');
+
+            } else {
+                // --- Activar Modo Colocación ---
                 try {
+                    // 1. Iniciar Video/Cámara
                     const stream = await navigator.mediaDevices.getUserMedia({
-                        video: { facingMode: 'environment' } // Prefer rear camera
+                        video: { facingMode: 'environment' } 
                     });
-                    videoElement.srcObject = stream;
-                    videoElement.style.display = 'block';
-
-                    // Create Three.js VideoTexture
-                    videoTexture = new THREE.VideoTexture(videoElement);
-                    videoTexture.minFilter = THREE.LinearFilter;
-                    videoTexture.magFilter = THREE.LinearFilter;
+                    
+                    video = document.createElement('video');
+                    video.srcObject = stream;
+                    video.play();
+                    
+                    videoTexture = new THREE.VideoTexture(video);
+                    
+                    // 2. Configurar Escena para AR Illusion
                     scene.background = videoTexture;
+                    
+                    // 3. Configurar Cámara y Modelo
+                    if (currentModel) currentModel.position.copy(PLACEMENT_MODEL_OFFSET);
+                    camera.position.copy(PLACEMENT_CAMERA_POS);
+                    controls.target.copy(PLACEMENT_TARGET_POS);
+                    controls.update();
 
-                    renderer.setClearColor(0x000000, 0); // Transparent background for renderer
-
-                    btn.textContent = 'Usar Fondo Sólido';
-                    btn.classList.remove('bg-yellow-600');
-                    btn.classList.add('bg-cyan-600');
+                    // 4. Actualizar UI
+                    isPlacementModeActive = true;
+                    status.textContent = 'ON';
+                    btn.classList.remove('bg-pink-700/80', 'hover:bg-pink-600');
+                    btn.classList.add('bg-green-600', 'hover:bg-green-500');
+                    alertMessage('Modo Pared Activado (Cámara en uso).', 'success');
 
                 } catch (err) {
-                    console.error("Error accessing the camera: ", err);
-                    // Fallback to solid color and notify user
-                    alertMessage("No se pudo acceder a la cámara. Por favor, verifique los permisos.");
-                    isCameraBackground = false;
-                    scene.background = null;
-                    renderer.setClearColor(0x0f172a, 1);
+                    console.error('Error al acceder a la cámara:', err);
+                    alertMessage('ERROR: No se pudo acceder a la cámara o permisos denegados.', 'error');
                 }
-            } else {
-                // Stop camera stream and revert to solid color
-                if (videoElement.srcObject) {
-                    videoElement.srcObject.getTracks().forEach(track => track.stop());
-                }
-                videoElement.style.display = 'none';
-                scene.background = null; // Revert to null background
-                renderer.setClearColor(0x0f172a, 1); // Set solid background color
-                if (videoTexture) {
-                    videoTexture.dispose();
-                }
-
-                btn.textContent = 'Usar Fondo RA';
-                btn.classList.remove('bg-cyan-600');
-                btn.classList.add('bg-yellow-600');
             }
         }
 
-        // Custom alert/message box (replacing alert())
-        function alertMessage(message) {
-            const msgBox = document.createElement('div');
-            msgBox.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-red-700 text-white p-4 rounded-lg shadow-xl z-50 transition duration-300 text-center';
-            msgBox.textContent = message;
-            document.body.appendChild(msgBox);
-            setTimeout(() => {
-                msgBox.remove();
+
+        // 7. Sistema de Alerta Personalizada
+        let alertTimeout = null;
+        function alertMessage(message, type = 'info') {
+            const alertBox = document.getElementById('alert-box');
+            const alertMsg = document.getElementById('alert-message');
+
+            // Limpiar timeout anterior
+            if (alertTimeout) {
+                clearTimeout(alertTimeout);
+            }
+
+            // Aplicar estilo basado en el tipo
+            let baseClasses = 'text-white text-lg font-semibold';
+            alertBox.className = alertBox.className.replace(/border-(red|green|yellow|gray)-\d{3}\/50/g, 'border-gray-700/50');
+            
+            if (type === 'success') {
+                alertBox.classList.add('border-green-300/50');
+                alertMsg.innerHTML = `<span class="text-green-300 mr-2">✓</span> ${message}`;
+            } else if (type === 'error') {
+                alertBox.classList.add('border-red-300/50');
+                alertMsg.innerHTML = `<span class="text-red-300 mr-2">✗</span> ${message}`;
+            } else if (type === 'warning') {
+                alertBox.classList.add('border-yellow-300/50');
+                alertMsg.innerHTML = `<span class="text-yellow-300 mr-2">!</span> ${message}`;
+            } else {
+                alertBox.classList.add('border-gray-300/50');
+                alertMsg.innerHTML = message;
+            }
+
+            // Mostrar
+            alertBox.classList.remove('opacity-0', 'pointer-events-none');
+            alertBox.classList.add('opacity-100', 'pointer-events-auto');
+
+            // Ocultar automáticamente después de 3 segundos
+            alertTimeout = setTimeout(() => {
+                alertBox.classList.remove('opacity-100', 'pointer-events-auto');
+                alertBox.classList.add('opacity-0', 'pointer-events-none');
             }, 3000);
         }
 
-        // Initialize the application when the window loads
-        window.onload = init;
+
+        // --- Ejecución Principal ---
+        window.onload = function() {
+            initThree();
+            selectModel('Duck'); // Cargar modelo por defecto
+
+            // Ocultar los paneles al inicio para mantener el estado inicial
+            document.getElementById('control-panel').classList.add('-translate-x-full');
+            document.getElementById('carousel').classList.add('opacity-0', 'pointer-events-none');
+
+            // Asegurar que el botón de menú sea visible
+            document.getElementById('menu-icon').classList.remove('hidden');
+            document.getElementById('close-icon').classList.add('hidden');
+            
+            animate();
+        };
 
     </script>
 </body>
