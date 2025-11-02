@@ -4,11 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Visor 3D Minimalista</title>
-    <!-- Carga de Tailwind CSS --><script src="https://cdn.tailwindcss.com"></script>
-    <!-- Carga de Three.js y dependencias --><script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <!-- Scripts de Tailwind, Three.js y OrbitControls -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/GLTFLoader.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
     <style>
         /* Base styles and custom scrollbar for minimalist theme */
         body {
@@ -54,6 +57,7 @@
             font-size: 0.9rem;
             font-weight: 500;
             transition: all 0.2s ease-in-out;
+            text-align: center; /* Asegurar centrado para botones full-width */
         }
         .minimal-btn:hover {
             background-color: #8aa97a;
@@ -72,6 +76,7 @@
             flex-direction: column;
             align-items: center;
             cursor: pointer;
+            min-width: 6rem; /* Asegurar que no se haga demasiado pequeño */
         }
         .carousel-minimal-item > div {
             border: 1px solid rgba(0, 0, 0, 0.1);
@@ -80,6 +85,7 @@
             font-size: 0.75rem;
             color: #5c6c4e; /* Texto suave */
             transition: all 0.2s ease-in-out;
+            padding: 0.5rem; /* Pequeño padding para el contenido del item */
         }
         .carousel-minimal-item.active > div {
             border-color: #9fbe89 !important; /* Borde de acento para activo */
@@ -102,36 +108,49 @@
             border-radius: 1.5rem;
             padding: 1.2rem 1.5rem;
         }
-        #alert-box.minimal-alert p {
-            font-size: 1rem;
-            color: #3b4233;
-            font-weight: 500;
-        }
-        #alert-box.minimal-alert .text-green-300 { color: #5cb85c; } /* Verde para éxito */
-        #alert-box.minimal-alert .text-red-300 { color: #d9534f; }   /* Rojo para error */
-        #alert-box.minimal-alert .text-yellow-300 { color: #f0ad4e; } /* Amarillo para warning */
-        #alert-box.minimal-alert .border-green-300\/50 { border-color: #5cb85c; }
-        #alert-box.minimal-alert .border-red-300\/50 { border-color: #d9534f; }
-        #alert-box.minimal-alert .border-yellow-300\/50 { border-color: #f0ad4e; }
-        #alert-box.minimal-alert .border-gray-300\/50 { border-color: #cccccc; }
+        
+        /* Reglas de Media Query para Movil (sm o menos) */
+        @media (max-width: 768px) {
+            
+            /* Panel de Control Móvil */
+            #control-panel {
+                /* Posicionamiento en móvil: Ocupa el ancho completo */
+                width: calc(100vw - 2rem); 
+                height: 75vh; /* Máximo 75% de la altura visible */
+                top: 1rem; /* Margen superior */
+                left: 1rem; /* Margen izquierdo */
+                right: 1rem; /* Margen derecho */
+                transform: translateX(calc(-100% - 2rem)) !important; /* Ocultar a la izquierda (ajustado por padding) */
+                z-index: 30; /* Subir z-index para que cubra todo */
+            }
 
+            /* Mostrar panel */
+            #control-panel.is-visible {
+                transform: translateX(0) !important;
+            }
+            
+            /* Botón de Menú */
+            #menu-toggle-btn {
+                z-index: 50; /* Asegurar que el botón esté sobre el panel */
+                top: 0.75rem;
+                left: 0.75rem;
+            }
 
-        /* Icono de menú y cierre */
-        #menu-toggle-btn {
-            border-radius: 50%; /* Completamente redondo */
-            background-color: #f0ede8; /* Fondo claro */
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-            transition: all 0.2s ease-in-out;
-            border: none;
-        }
-        #menu-toggle-btn:hover {
-            background-color: #e0dcd7;
-            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
-            transform: translateY(-2px);
-        }
-        #menu-toggle-btn svg {
-            color: #3b4233; /* Color de texto oscuro suave */
-            stroke-width: 2; /* Grosor normal */
+            /* Carrusel de Modelos Móvil */
+            #carousel {
+                /* Centrado horizontal como antes */
+                width: calc(100% - 2rem);
+                /* Ajustar padding para que se vea bien en móvil */
+                padding: 1rem; 
+                overflow-x: auto; /* Permitir scroll horizontal si hay muchos modelos */
+                justify-content: flex-start; /* Alinear items al inicio */
+            }
+            
+            /* Contenedor de modelos dentro del carrusel, forzando scroll */
+            #carousel > div {
+                flex-wrap: nowrap; /* Evitar que los ítems salten de línea */
+                padding-bottom: 0.5rem;
+            }
         }
     </style>
     <script>
@@ -153,41 +172,53 @@
 </head>
 <body class="bg-light-bg text-text-dark-soft">
 
-    <!-- Contenedor principal de la aplicación --><div id="app-container" class="w-screen h-screen relative">
-        <!-- Canvas de Three.js (será inicializado por JS) --><div id="three-canvas-container" class="w-full h-full"></div>
+    <!-- Contenedor Principal -->
+    <div id="app-container" class="w-screen h-screen relative">
+        
+        <!-- Contenedor del Canvas 3D (Ocupa todo el fondo) -->
+        <div id="three-canvas-container" class="w-full h-full"></div>
 
-        <!-- 1. Alerta Personalizada (Notificación) --><div id="alert-box" class="minimal-alert fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 p-4 z-50 transition-opacity duration-300 pointer-events-none opacity-0"
+        <!-- Caja de Alerta Minimalista (Se mantiene centrada) -->
+        <div id="alert-box" class="minimal-alert fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 p-4 z-50 transition-opacity duration-300 pointer-events-none opacity-0"
             role="alert">
             <p id="alert-message" class="text-text-dark-soft font-medium"></p>
         </div>
 
-        <!-- 2. Botón de Menú (Hamburguesa) - Superior Izquierda --><button id="menu-toggle-btn"
+        <!-- Botón de Menú (Responsive: se queda arriba a la izquierda) -->
+        <button id="menu-toggle-btn"
             class="fixed top-4 left-4 p-3 bg-white shadow-lg hover:shadow-xl transition duration-200 z-30"
             onclick="togglePanelVisibility()">
-            <!-- Icono de Hamburguesa (SVG de lucide-react, simulado) --><svg id="menu-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-text-dark-soft">
+            <!-- Icono de Menú -->
+            <svg id="menu-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-text-dark-soft">
                 <line x1="4" y1="12" x2="20" y2="12"></line>
                 <line x1="4" y1="6" x2="20" y2="6"></line>
                 <line x1="4" y1="18" x2="20" y2="18"></line>
             </svg>
-            <!-- Icono de Cierre (X) - Oculto inicialmente --><svg id="close-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-text-dark-soft hidden">
+            <!-- Icono de Cierre (X) -->
+            <svg id="close-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-text-dark-soft hidden">
                 <line x1="18" y1="6" x2="6" y2="18"></line>
                 <line x1="6" y1="6" x2="18" y2="18"></line>
             </svg>
         </button>
 
 
-        <!-- 3. Panel de Controles (Minimalist Glassmorphism) - Superior Izquierda --><div id="control-panel"
-             class="glass-panel-minimal fixed top-4 left-4 w-72 h-[calc(100vh-2rem)] p-6 z-20
-                    transform -translate-x-full transition-transform duration-300 overflow-y-auto">
+        <!-- Panel de Control (Desktop: Fijo a la izquierda, Móvil: Deslizable desde la izquierda) -->
+        <div id="control-panel"
+             class="glass-panel-minimal fixed top-4 left-4 
+                    w-72 md:h-[calc(100vh-2rem)] p-6 z-20 
+                    transform -translate-x-full md:translate-x-0 md:w-72 md:h-[calc(100vh-2rem)]
+                    transition-transform duration-300 overflow-y-auto">
             
             <h2 class="text-2xl font-semibold mb-6 text-accent-color">Controles 3D</h2>
 
-            <!-- Información del Modelo --><div class="mb-6 pb-4 border-b border-gray-200">
+            <!-- Modelo Actual -->
+            <div class="mb-6 pb-4 border-b border-gray-200">
                 <p class="text-sm text-text-light-soft mb-1">Modelo Actual:</p>
                 <p id="current-model-name" class="text-xl font-medium">Duck</p>
             </div>
 
-            <!-- Grupo de Controles: Navegación y Zoom --><div class="mb-6">
+            <!-- Navegación -->
+            <div class="mb-6">
                 <h3 class="text-lg font-medium mb-3 border-b border-gray-200 pb-1">Navegación</h3>
                 <div class="grid grid-cols-2 gap-3">
                     <button class="minimal-btn" onclick="zoomCamera(1.1)">
@@ -199,7 +230,8 @@
                 </div>
             </div>
 
-            <!-- Grupo de Controles: Escala --><div class="mb-6">
+            <!-- Escala -->
+            <div class="mb-6">
                 <h3 class="text-lg font-medium mb-3 border-b border-gray-200 pb-1">Escala</h3>
                 <div class="grid grid-cols-2 gap-3">
                     <button class="minimal-btn" onclick="scaleModel(1.2)">
@@ -211,7 +243,8 @@
                 </div>
             </div>
 
-            <!-- Grupo de Controles: Toggles --><div class="mb-6">
+            <!-- Modos -->
+            <div class="mb-6">
                 <h3 class="text-lg font-medium mb-3 border-b border-gray-200 pb-1">Modos</h3>
                 <div class="space-y-3">
                     <button id="toggle-rotate-btn" class="minimal-btn w-full" onclick="toggleAutoRotate()">
@@ -223,7 +256,8 @@
                 </div>
             </div>
 
-            <!-- Grupo de Controles: Fondo / Realidad Aumentada (Modo Pared) --><div class="mb-6">
+            <!-- Simulación AR -->
+            <div class="mb-6">
                 <h3 class="text-lg font-medium mb-3 border-b border-gray-200 pb-1">Simulación AR</h3>
                 <button id="toggle-placement-btn" class="minimal-btn w-full bg-orange-400 hover:bg-orange-500" onclick="togglePlacementMode()">
                     Modo Pared (AR): <span id="placement-status">OFF</span>
@@ -231,11 +265,13 @@
                 <p class="text-xs text-gray-500 mt-2 italic">Requiere permiso de la cámara.</p>
             </div>
             
-            <!-- Grupo de Controles: Ajuste Fino de Colocación (Solo visible en Modo Pared) --><div id="placement-controls" class="space-y-3 pt-4 border-t border-gray-200 hidden">
+            <!-- Controles de Posición (AR) -->
+            <div id="placement-controls" class="space-y-3 pt-4 border-t border-gray-200 hidden">
                 <h3 class="text-lg font-medium text-orange-500">Ajuste de Posición (AR)</h3>
                 <p class="text-sm text-text-light-soft">Mueve el modelo para alinearlo.</p>
                 
-                <!-- Posición X (Horizontal) --><div class="flex flex-col">
+                <!-- Movimiento X -->
+                <div class="flex flex-col">
                     <span class="text-sm mb-1 text-text-light-soft">Movimiento Horizontal (X)</span>
                     <div class="grid grid-cols-2 gap-3">
                         <button class="minimal-btn bg-orange-400/80 hover:bg-orange-500" onclick="moveModel('x', -0.1)">
@@ -247,7 +283,8 @@
                     </div>
                 </div>
 
-                <!-- Posición Y (Vertical) --><div class="flex flex-col">
+                <!-- Movimiento Y -->
+                <div class="flex flex-col">
                     <span class="text-sm mb-1 text-text-light-soft">Movimiento Vertical (Y)</span>
                     <div class="grid grid-cols-2 gap-3">
                         <button class="minimal-btn bg-orange-400/80 hover:bg-orange-500" onclick="moveModel('y', 0.1)">
@@ -259,7 +296,8 @@
                     </div>
                 </div>
                 
-                <!-- Rotación Z (Inclinación) --><div class="flex flex-col">
+                <!-- Rotación Z -->
+                <div class="flex flex-col">
                     <span class="text-sm mb-1 text-text-light-soft">Rotación (Inclinación Z)</span>
                     <div class="grid grid-cols-2 gap-3">
                         <button class="minimal-btn bg-purple-400/80 hover:bg-purple-500" onclick="rotateModel('z', 0.05)">
@@ -278,13 +316,16 @@
 
         </div>
 
-        <!-- 4. Carrusel de Modelos (Minimalist Glassmorphism) - Inferior Central --><div id="carousel"
-             class="glass-panel-minimal fixed bottom-6 left-1/2 transform -translate-x-1/2 p-4 z-20
-                    flex space-x-4 transition-all duration-300 opacity-0 pointer-events-none">
+        <!-- Carrusel de Modelos (Siempre visible, Responsive: Fijo en la parte inferior) -->
+        <div id="carousel"
+             class="glass-panel-minimal fixed bottom-4 left-1/2 transform -translate-x-1/2 p-4 z-20 
+                    flex flex-col md:flex-row space-y-3 md:space-y-0 md:space-x-4 
+                    w-[90%] md:w-auto transition-opacity duration-300 opacity-100 pointer-events-auto">
             
-            <h3 class="text-lg font-medium my-auto pr-4 border-r border-gray-200 text-text-light-soft">Modelos</h3>
+            <h3 class="text-base font-medium my-auto pr-4 border-b md:border-b-0 md:border-r border-gray-200 pb-2 md:pb-0 text-text-light-soft">Modelos</h3>
 
-            <!-- Elementos del Carrusel --><div class="flex space-x-3">
+            <!-- Contenedor de Ítems del Carrusel (permite scroll horizontal en móvil) -->
+            <div class="flex space-x-3 overflow-x-auto overflow-y-hidden">
                 <button class="carousel-minimal-item" data-model="Duck" onclick="selectModel('Duck')">
                     <div class="w-16 h-16 flex items-center justify-center font-semibold transition-all">
                         Pato
@@ -309,15 +350,13 @@
     </div>
 
     <script>
-        // No es necesario redefinir CONTROL_BTN_CLASSES, se usará minimal-btn directamente
-        
         // --- Variables de Three.js y Configuración de Posición ---
         let scene, camera, renderer, controls;
         let loader, currentModel = null;
         let video = null; // Para el fondo AR
         let videoTexture = null;
         
-        let isPlacementModeActive = false; // Nuevo estado global para el modo pared
+        let isPlacementModeActive = false; // Estado global para el modo pared
 
         // Rutas de los modelos glTF de ejemplo de Khronos (pueden requerir CORS)
         const MODEL_PATHS = {
@@ -460,24 +499,34 @@
         // 1. Alternar Visibilidad del Panel y Carrusel
         function togglePanelVisibility() {
             const panel = document.getElementById('control-panel');
-            const carousel = document.getElementById('carousel');
             const menuIcon = document.getElementById('menu-icon');
             const closeIcon = document.getElementById('close-icon');
-
+            
+            // Determinar si es un dispositivo móvil (ancho menor a 768px)
+            const isMobile = window.innerWidth < 768; 
+            
             isPanelVisible = !isPanelVisible;
 
             if (isPanelVisible) {
-                // Mostrar panel y carrusel
-                panel.classList.remove('-translate-x-full');
-                carousel.classList.remove('opacity-0', 'pointer-events-none');
-                carousel.classList.add('opacity-100', 'pointer-events-auto');
+                // Mostrar panel
+                // En móvil, se aplica la clase 'is-visible' (ver CSS)
+                if (isMobile) {
+                    panel.classList.add('is-visible');
+                } else {
+                    // En desktop, se usa la clase de Tailwind
+                    panel.classList.remove('-translate-x-full');
+                }
+
                 menuIcon.classList.add('hidden');
                 closeIcon.classList.remove('hidden');
             } else {
-                // Ocultar panel y carrusel
-                panel.classList.add('-translate-x-full');
-                carousel.classList.remove('opacity-100', 'pointer-events-auto');
-                carousel.classList.add('opacity-0', 'pointer-events-none');
+                // Ocultar panel
+                 if (isMobile) {
+                    panel.classList.remove('is-visible');
+                } else {
+                    panel.classList.add('-translate-x-full');
+                }
+                
                 menuIcon.classList.remove('hidden');
                 closeIcon.classList.add('hidden');
             }
@@ -681,14 +730,30 @@
             initThree();
             selectModel('Duck'); // Cargar modelo por defecto
 
-            // Ocultar los paneles al inicio para mantener el estado inicial
-            document.getElementById('control-panel').classList.add('-translate-x-full');
-            document.getElementById('carousel').classList.add('opacity-0', 'pointer-events-none');
-            document.getElementById('placement-controls').classList.add('hidden'); // Ocultar controles AR
+            // Lógica para determinar el estado inicial de visibilidad del panel
+            const panel = document.getElementById('control-panel');
+            const isMobile = window.innerWidth < 768; 
+            
+            // Si es móvil, el panel debe estar completamente oculto inicialmente.
+            if (isMobile) {
+                // El CSS ya lo oculta con transform: translateX(calc(-100% - 2rem))
+                isPanelVisible = false;
+                panel.classList.remove('md:translate-x-0'); // Asegura que no se muestre en móvil
+            } else {
+                // En desktop, el panel debe estar visible por defecto.
+                isPanelVisible = true;
+                panel.classList.remove('-translate-x-full'); // Mostrar panel en desktop
+                panel.classList.add('md:translate-x-0'); 
+                
+                // Ocultar icono de cierre y mostrar el de menú (en desktop visible)
+                document.getElementById('menu-icon').classList.add('hidden');
+                document.getElementById('close-icon').classList.remove('hidden');
+            }
 
-            // Asegurar que el botón de menú sea visible
-            document.getElementById('menu-icon').classList.remove('hidden');
-            document.getElementById('close-icon').classList.add('hidden');
+            // El carrusel siempre debe estar visible por defecto (responsive)
+            // Ya no es necesario manejar la opacidad aquí, el CSS lo hace por defecto.
+
+            document.getElementById('placement-controls').classList.add('hidden'); // Ocultar controles AR
             
             animate();
         };
