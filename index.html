@@ -1,159 +1,162 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-  <title>Visor 3D / AR — WebXR + Fallback</title>
-
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.min.js"></script>
-  <script type="module">
-    import { ARButton } from 'https://cdn.jsdelivr.net/npm/three@0.150.0/examples/jsm/webxr/ARButton.js';
-    window.ARButton = ARButton;
-  </script>
-
-  <style>
-    body{margin:0;overflow:hidden;font-family:sans-serif;}
-    canvas{width:100%;height:100%;display:block;}
-    #status{position:fixed;top:10px;left:10px;z-index:20;
-      background:rgba(0,0,0,0.6);color:#fff;padding:8px 12px;
-      border-radius:8px;font-size:14px;}
-    #fallback{position:fixed;top:50px;left:10px;z-index:20;
-      background:#dc2626;color:#fff;padding:6px 10px;
-      border-radius:6px;border:0;cursor:pointer;display:none;}
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebXR Realidad Aumentada (AR) con Three.js</title>
+    
+    <style>
+        body { margin: 0; overflow: hidden; }
+        /* Estilo para que el botón de AR se coloque sobre la vista de la cámara */
+        #ar-button-container {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+        }
+        /* El canvas se creará automáticamente por Three.js */
+        canvas {
+            display: block;
+        }
+    </style>
 </head>
 <body>
-  <div id="status">Comprobando soporte WebXR…</div>
-  <button id="fallback" onclick="startFallback()">Usar modo AR simulado</button>
+    <div id="ar-button-container"></div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/GLTFLoader.js"></script>
+    
+    <script type="module">
+        // Importar el módulo ARButton, esencial para iniciar y gestionar la sesión WebXR
+        import { ARButton } from 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/jsm/webxr/ARButton.js';
+        
+        let scene, camera, renderer, controller;
+        let reticle, duckModel; // Retículo para indicar dónde se colocará el objeto
+        let hitTestSource = null;
+        let hitTestSourceInitialized = false;
 
-  <script type="module">
-    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.150.0/build/three.module.js';
-    import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.150.0/examples/jsm/loaders/GLTFLoader.js';
+        // Modelo GLTF (el Pato original)
+        const MODELS = {
+            Duck: 'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/Duck/glTF/Duck.gltf'
+        };
 
-    let camera,scene,renderer,model,reticle,hitTestSource=null,hitTestRequested=false;
-    const status=document.getElementById('status');
-    const fallbackBtn=document.getElementById('fallback');
+        init();
 
-    // Verificar soporte WebXR
-    if(navigator.xr&&navigator.xr.isSessionSupported){
-      navigator.xr.isSessionSupported('immersive-ar')
-        .then(supported=>{
-          if(supported){
-            initWebXR();
-          }else{
-            status.textContent='WebXR no disponible → usa modo simulado';
-            fallbackBtn.style.display='block';
-          }
-        }).catch(()=>{
-          status.textContent='Error al comprobar WebXR';
-          fallbackBtn.style.display='block';
-        });
-    }else{
-      status.textContent='navigator.xr no disponible';
-      fallbackBtn.style.display='block';
-    }
+        function init() {
+            // 1. Configurar la Escena y la Cámara (WebXR controlará su posición en AR)
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
 
-    // Inicialización WebXR
-    function initWebXR(){
-      status.textContent='WebXR disponible ✅';
-      renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
-      renderer.xr.enabled=true;
-      renderer.setSize(window.innerWidth,window.innerHeight);
-      document.body.appendChild(renderer.domElement);
-      document.body.appendChild(window.ARButton.createButton(renderer,{requiredFeatures:['hit-test']}));
-      scene=new THREE.Scene();
-      camera=new THREE.PerspectiveCamera(70,window.innerWidth/window.innerHeight,0.01,20);
-      scene.add(new THREE.HemisphereLight(0xffffff,0xbbbbff,1));
+            // 2. Luces para la escena
+            scene.add(new THREE.AmbientLight(0xffffff, 1.0)); // Luz ambiental
+            scene.add(new THREE.DirectionalLight(0xffffff, 0.8)); // Luz direccional
 
-      const ring=new THREE.RingGeometry(0.08,0.13,32).rotateX(-Math.PI/2);
-      reticle=new THREE.Mesh(ring,new THREE.MeshBasicMaterial({color:0x00ff99}));
-      reticle.matrixAutoUpdate=false;
-      reticle.visible=false;
-      scene.add(reticle);
+            // 3. Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            renderer.xr.enabled = true; // <--- Habilitar WebXR
+            document.body.appendChild(renderer.domElement);
 
-      new GLTFLoader().load(
-        'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/Duck/glTF/Duck.gltf',
-        gltf=>{model=gltf.scene;model.visible=false;model.scale.set(0.5,0.5,0.5);scene.add(model);}
-      );
-
-      const controller=renderer.xr.getController(0);
-      controller.addEventListener('select',()=>{
-        if(reticle.visible&&model){
-          const pos=new THREE.Vector3(),quat=new THREE.Quaternion();
-          reticle.matrix.decompose(pos,quat,new THREE.Vector3());
-          model.position.copy(pos);
-          model.quaternion.copy(quat);
-          model.visible=true;
-        }
-      });
-      scene.add(controller);
-
-      renderer.setAnimationLoop(render);
-    }
-
-    function render(t,frame){
-      if(frame){
-        const session=renderer.xr.getSession();
-        const refSpace=renderer.xr.getReferenceSpace();
-        if(session&&!hitTestRequested){
-          session.requestReferenceSpace('viewer')
-            .then(space=>session.requestHitTestSource({space}))
-            .then(src=>{
-              hitTestSource=src;
-              hitTestRequested=true;
-              session.addEventListener('end',()=>{hitTestRequested=false;hitTestSource=null;});
+            // 4. Inicializar el Botón AR (para iniciar la sesión WebXR)
+            const arButton = ARButton.createButton(renderer, { 
+                requiredFeatures: ['hit-test'], // <-- Requerir la detección de superficies
+                optionalFeatures: ['dom-overlay'],
+                // Permitir que el botón de AR se coloque encima del contenido de la cámara
+                domOverlay: { root: document.body } 
             });
+            document.getElementById('ar-button-container').appendChild(arButton);
+            
+            // 5. Configurar el Retículo (el círculo que indica el punto de colocación)
+            const geometry = new THREE.RingGeometry(0.15, 0.2, 32).rotateX(-Math.PI / 2);
+            const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            reticle = new THREE.Mesh(geometry, material);
+            reticle.matrixAutoUpdate = false;
+            reticle.visible = false;
+            scene.add(reticle);
+
+            // 6. Cargar el Modelo 3D (el pato)
+            const loader = new THREE.GLTFLoader();
+            loader.load(MODELS.Duck, function (gltf) {
+                duckModel = gltf.scene;
+                duckModel.scale.set(0.5, 0.5, 0.5); 
+                scene.add(duckModel);
+                duckModel.visible = false; // Ocultar hasta que se coloque en el mundo real
+
+                // Centrar el modelo en su origen
+                const box = new THREE.Box3().setFromObject(duckModel);
+                const center = box.getCenter(new THREE.Vector3());
+                duckModel.position.sub(center);
+            });
+
+            // 7. Configurar el Controlador de Interacción (tocar la pantalla)
+            controller = renderer.xr.getController(0);
+            controller.addEventListener('select', onSelect); // Evento 'select' es un toque en la pantalla o gatillo del mando
+            scene.add(controller);
+
+            window.addEventListener('resize', onWindowResize);
+            renderer.setAnimationLoop(render); // <-- Usar el bucle de renderizado de WebXR
         }
-        if(hitTestSource){
-          const hits=frame.getHitTestResults(hitTestSource);
-          if(hits.length>0){
-            const hit=hits[0];
-            const pose=hit.getPose(refSpace);
-            reticle.visible=true;
-            reticle.matrix.fromArray(pose.transform.matrix);
-          }else{reticle.visible=false;}
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
         }
-      }
-      renderer.render(scene,camera);
-    }
 
-    // Fallback simple (usa cámara + rotación)
-    window.startFallback=async()=>{
-      status.textContent='Modo AR simulado activo';
-      fallbackBtn.style.display='none';
-      const video=document.createElement('video');
-      video.autoplay=true;video.playsInline=true;
-      video.style.position='fixed';
-      video.style.top='0';video.style.left='0';
-      video.style.width='100%';video.style.height='100%';
-      video.style.objectFit='cover';video.style.zIndex='-1';
-      document.body.appendChild(video);
-      try{
-        const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
-        video.srcObject=stream;
-      }catch(e){status.textContent='No se pudo acceder a la cámara';}
+        // Función que se llama cuando el usuario toca la pantalla
+        function onSelect() {
+            if (reticle.visible) {
+                // Si el retículo es visible (se ha detectado una superficie), colocar el pato
+                duckModel.position.setFromMatrixPosition(reticle.matrix);
+                duckModel.visible = true;
+            }
+        }
 
-      const scene2=new THREE.Scene();
-      const cam2=new THREE.PerspectiveCamera(75,window.innerWidth/window.innerHeight,0.1,100);
-      const renderer2=new THREE.WebGLRenderer({alpha:true});
-      renderer2.setSize(window.innerWidth,window.innerHeight);
-      document.body.appendChild(renderer2.domElement);
-      const light=new THREE.HemisphereLight(0xffffff,0xbbbbff,1);scene2.add(light);
+        // El bucle de animación principal de WebXR
+        function render(timestamp, frame) {
+            if (frame) {
+                const referenceSpace = renderer.xr.getReferenceSpace();
+                const session = renderer.xr.getSession();
 
-      new THREE.GLTFLoader().load(
-        'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/Duck/glTF/Duck.gltf',
-        gltf=>{const m=gltf.scene;m.scale.set(0.6,0.6,0.6);scene2.add(m);}
-      );
+                // Inicializar Hit-Test Source (la fuente de datos para detectar superficies)
+                if (!hitTestSourceInitialized) {
+                    session.requestReferenceSpace('viewer').then((viewerSpace) => {
+                        session.requestHitTestSource({ space: viewerSpace }).then((source) => {
+                            hitTestSource = source;
+                            hitTestSourceInitialized = true;
+                        });
+                    });
+                }
 
-      const controls=new THREE.DeviceOrientationControls(cam2);
-      function anim(){
-        requestAnimationFrame(anim);
-        controls.update();
-        renderer2.render(scene2,cam2);
-      }
-      anim();
-    };
-  </script>
+                // Realizar Hit-Test para encontrar una superficie
+                if (hitTestSource) {
+                    const hitTestResults = frame.getHitTestResults(hitTestSource);
+
+                    if (hitTestResults.length) {
+                        // Se encontró una superficie: mostrar el retículo en esa posición
+                        const hit = hitTestResults[0];
+                        const pose = hit.getPose(referenceSpace);
+
+                        reticle.visible = true;
+                        reticle.matrix.fromArray(pose.transform.matrix); // Usar la matriz de transformación para mover el retículo
+                    } else {
+                        // No se encontró superficie: ocultar el retículo
+                        reticle.visible = false;
+                    }
+                }
+            }
+
+            // Opcional: Rotar un poco el modelo una vez colocado
+            if (duckModel && duckModel.visible) {
+                duckModel.rotation.y += 0.01;
+            }
+            
+            renderer.render(scene, camera);
+        }
+
+    </script>
 </body>
 </html>
