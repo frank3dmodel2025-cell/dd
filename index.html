@@ -3,16 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Visor AR con Rastreo Rotacional</title>
+    <title>Visor AR con Rastreo Rotacional y Escala Táctil</title>
     
-    <!-- Scripts de Tailwind, Three.js y OrbitControls -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <!-- Incluir DeviceOrientationControls para facilitar el uso de sensores de movimiento -->
     <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/Duck/glTF/Duck.gltf"></script>
     <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/GLTFLoader.js"></script>
-    <!-- Usaremos DeviceOrientationControls para manejar la rotación de la cámara (no OrbitControls) -->
     <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/DeviceOrientationControls.js"></script>
 
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -24,7 +21,7 @@
             background-color: #f7f3ed; 
             color: #3b4233;
             overflow: hidden;
-            touch-action: none;
+            touch-action: none; /* Deshabilitar el zoom/pan del navegador para los gestos AR */
         }
         canvas {
             display: block;
@@ -72,23 +69,18 @@
 </head>
 <body class="bg-gray-100 antialiased">
 
-    <!-- Video Element for Camera Pass-Through (Oculto por defecto) -->
     <video id="video-feed" class="video-background" autoplay playsinline></video>
 
-    <!-- Contenedor del Canvas 3D (Se llenará con JavaScript) -->
     <div id="three-container"></div>
 
-    <!-- Botón para Abrir Panel de Control (Siempre visible) -->
     <button id="menu-icon" class="fixed top-4 right-4 z-40 p-3 bg-indigo-600 text-white rounded-full shadow-lg transition-transform hover:scale-105" onclick="toggleControlPanel()">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
         </svg>
     </button>
 
-    <!-- Panel de Control (Glassmorphism) -->
     <div id="control-panel" class="fixed top-0 right-0 h-full w-full md:w-80 z-50 p-6 glass-panel overflow-y-auto">
         
-        <!-- Icono de Cerrar Panel -->
         <button id="close-icon" class="absolute top-4 right-4 p-2 text-gray-600 rounded-full hover:bg-gray-200" onclick="toggleControlPanel()">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -97,63 +89,53 @@
         
         <h2 class="text-2xl font-bold mb-6 text-indigo-800 pt-8 md:pt-0">Controles de Visor 3D</h2>
 
-        <!-- Sección de Modelos -->
         <div class="mb-6">
             <h3 class="font-semibold mb-2">Modelo Actual: <span id="current-model" class="text-indigo-600">Duck</span></h3>
             <button class="btn-secondary w-full" onclick="toggleModelSelector(true)">Cambiar Modelo</button>
         </div>
 
-        <!-- Sección de Modo Interacción -->
         <div class="mb-6">
             <h3 class="font-semibold mb-2">Modo Interacción:</h3>
             <p class="text-sm text-gray-600 mb-2">Actual: <span id="lock-status" class="font-medium text-gray-900">OFF (Rotar)</span></p>
             <button class="btn-primary w-full" onclick="toggleInteractionMode()">Alternar (Rotar/Mover)</button>
         </div>
 
-        <!-- Modo Pared/AR -->
         <div class="mb-6 border-t pt-4 border-gray-300">
             <h3 class="font-bold text-lg mb-3 text-red-600">MODO PARED (AR Simulado)</h3>
             
             <p class="text-sm text-gray-600 mb-2">Estado: <span id="ar-mode-status" class="font-medium text-gray-900">Inactivo</span></p>
 
-            <!-- Botón para iniciar la cámara -->
             <button id="toggle-ar-mode-btn" class="btn-base w-full bg-red-500 text-white hover:bg-red-600" onclick="toggleARMode()">
                 Activar Cámara y AR
             </button>
         </div>
 
-        <!-- Controles de Posicionamiento (Ajuste fino de AR) -->
         <div id="placement-controls" class="space-y-4 pt-4 border-t border-gray-300 hidden">
             <h3 class="font-semibold text-gray-800">Ajuste de Posición Fina</h3>
             
-            <!-- Rastreo de Rotación (Nuevo Botón) -->
             <div class="pt-2">
                 <h4 class="font-medium text-sm mb-1">Rastreo de Movimiento:</h4>
-                <button id="toggle-motion-btn" class="btn-base w-full bg-green-500 text-white hover:bg-green-600" onclick="toggleMotionTracking(true)">
-                    Activar Rastreo de Rotación
+                <button id="toggle-motion-btn" class="btn-base w-full bg-red-500 text-white hover:bg-red-600" onclick="toggleMotionTracking()">
+                    Desactivar Rastreo de Rotación
                 </button>
                 <p class="text-xs mt-1 text-gray-500">Mantiene el modelo fijo en la pared al mover el teléfono.</p>
             </div>
 
-            <!-- Slider X -->
             <div>
                 <label for="ar-x-slider" class="block text-sm font-medium text-gray-700">Posición Horizontal (X): <span id="ar-x-value">0.0</span></label>
                 <input type="range" id="ar-x-slider" min="-5" max="5" value="0" step="0.1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" oninput="updateModelPlacement()">
             </div>
-            <!-- Slider Y -->
             <div>
                 <label for="ar-y-slider" class="block text-sm font-medium text-gray-700">Posición Vertical (Y): <span id="ar-y-value">0.0</span></label>
                 <input type="range" id="ar-y-slider" min="-5" max="5" value="0" step="0.1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" oninput="updateModelPlacement()">
             </div>
-            <!-- Slider Z (Rotación) -->
             <div>
                 <label for="ar-z-slider" class="block text-sm font-medium text-gray-700">Rotación (Inclinación Z): <span id="ar-z-value">0.0</span>°</label>
                 <input type="range" id="ar-z-slider" min="-180" max="180" value="0" step="1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer" oninput="updateModelPlacement()">
             </div>
 
-            <!-- Control de Escala -->
             <div class="pt-4 border-t border-gray-300">
-                <h4 class="font-semibold text-gray-800 mb-2">Escala del Modelo</h4>
+                <h4 class="font-semibold text-gray-800 mb-2">Escala del Modelo (O Pellizca la Pantalla)</h4>
                 <div class="flex space-x-2">
                     <button class="btn-secondary flex-1" onclick="adjustScale(-0.1)">Reducir</button>
                     <button class="btn-secondary flex-1" onclick="adjustScale(0.1)">Aumentar</button>
@@ -162,7 +144,6 @@
         </div>
     </div>
 
-    <!-- Modal para Selección de Modelo -->
     <div id="model-selector-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-300">
         <div class="bg-white rounded-xl p-8 shadow-2xl w-full max-w-sm">
             <h3 class="text-xl font-bold mb-4">Seleccionar Modelo GLTF</h3>
@@ -175,7 +156,6 @@
         </div>
     </div>
 
-    <!-- Caja de Alerta Personalizada (Reemplazo de alert()) -->
     <div id="custom-alert" class="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-6 py-3 rounded-lg shadow-xl text-white bg-indigo-600 opacity-0 pointer-events-none transition-opacity duration-300">
         <span id="alert-message"></span>
     </div>
@@ -190,6 +170,10 @@
         let deviceOrientationControls; // Nuevo control para la AR
         let alertTimeout;
         const videoElement = document.getElementById('video-feed');
+        
+        // Variables para el control de escala táctil (pinch-to-zoom)
+        let initialDistance = 0;
+        let initialScale = 1.0;
         
         // Configuración de Modelos (URLs de ejemplos de Three.js)
         const MODELS = {
@@ -293,6 +277,11 @@
 
             // 9. Initializing Device Orientation Controls
             deviceOrientationControls = new THREE.DeviceOrientationControls(camera);
+            
+            // 10. Listeners para Pinch-to-Zoom
+            renderer.domElement.addEventListener('touchstart', onTouchStart, false);
+            renderer.domElement.addEventListener('touchmove', onTouchMove, false);
+            renderer.domElement.addEventListener('touchend', onTouchEnd, false);
         }
 
         function onWindowResize() {
@@ -386,6 +375,9 @@
         const raycaster = new THREE.Raycaster();
 
         function onPointerDown(event) {
+            // Prevenir drag si estamos en modo AR con rastreo de movimiento
+            if (isARMode && isMotionTrackingActive) return; 
+
             pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
             pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
 
@@ -422,7 +414,7 @@
                     dragObject.position.y -= deltaY;
                     
                     // Actualizar sliders (solo si no estamos en modo AR, para evitar conflictos)
-                    if (!isARMode) {
+                    if (isARMode) {
                         document.getElementById('ar-x-slider').value = dragObject.position.x;
                         document.getElementById('ar-y-slider').value = dragObject.position.y;
                         document.getElementById('ar-x-value').textContent = dragObject.position.x.toFixed(1);
@@ -438,6 +430,57 @@
             renderer.domElement.removeEventListener('pointerup', onPointerUp, false);
         }
         
+        // --- LÓGICA DE ESCALA TÁCTIL (PINCH-TO-ZOOM) ---
+        
+        function getTouchDistance(touches) {
+            const dx = touches[0].pageX - touches[1].pageX;
+            const dy = touches[0].pageY - touches[1].pageY;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        function onTouchStart(event) {
+            if (isARMode && event.touches.length === 2) {
+                // Iniciar el gesto de pellizco
+                initialDistance = getTouchDistance(event.touches);
+                initialScale = modelContainer.scale.x; // Asumir escala uniforme
+            }
+        }
+
+        function onTouchMove(event) {
+            if (isARMode && event.touches.length === 2 && initialDistance > 0) {
+                event.preventDefault(); // Prevenir el scroll/pan del navegador
+
+                const currentDistance = getTouchDistance(event.touches);
+                const scaleFactor = currentDistance / initialDistance;
+                let newScale = initialScale * scaleFactor;
+                
+                // Aplicar un factor de ajuste para que no sea demasiado sensible
+                const MIN_SCALE = 0.1;
+                const MAX_SCALE = 5.0;
+                newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
+
+                // Aplicar la nueva escala al contenedor del modelo
+                modelContainer.scale.set(newScale, newScale, newScale);
+                
+                // Opcional: Mostrar retroalimentación si se desea
+                // showAlert(`Escala: ${newScale.toFixed(2)}`);
+            }
+            // También se llama a onPointerMove para arrastrar con un solo dedo si no hay pellizco
+            if (event.touches.length === 1 && !isMotionTrackingActive && controls.enabled === false) {
+                 // Convertir evento táctil a evento de puntero para onPointerMove si es necesario
+                 // En la mayoría de los navegadores modernos, onPointerMove funcionaría para un solo toque
+                 // Pero para asegurar, podrías implementar la lógica de arrastre para un solo dedo aquí
+                 
+            }
+        }
+
+        function onTouchEnd() {
+            // Restablecer variables para terminar el gesto
+            initialDistance = 0;
+            initialScale = 1.0;
+        }
+
+
         // --- LÓGICA DE AR (Modo Pared) ---
         
         window.startCameraPassThrough = async function() {
@@ -487,12 +530,12 @@
                     toggleBtn.classList.remove('bg-red-500', 'hover:bg-red-600');
                     toggleBtn.classList.add('bg-green-600', 'hover:bg-green-700');
                     
-                    // Deshabilitar OrbitControls, solo usaremos AR
+                    // Deshabilitar OrbitControls, y pasar al modo 'Mover' (drag)
                     controls.enabled = false;
                     document.getElementById('lock-status').textContent = 'ON (Mover)';
                     renderer.domElement.addEventListener('pointerdown', onPointerDown, false);
                     
-                    // Activar el rastreo de movimiento por defecto al entrar en AR (Mejora la ilusión)
+                    // Activar el rastreo de movimiento por defecto al entrar en AR (¡Tu solicitud!)
                     toggleMotionTracking(true); 
                 } else {
                     isARMode = false; // Falló la activación
@@ -523,7 +566,7 @@
             // Si se pasa un estado booleano, forzar ese estado. Si no, alternar.
             isMotionTrackingActive = (typeof forceState === 'boolean') ? forceState : !isMotionTrackingActive;
 
-            if (!isARMode) {
+            if (!isARMode && isMotionTrackingActive) {
                 showAlert('¡Primero debes activar el Modo Pared!');
                 isMotionTrackingActive = false;
                 return;
@@ -592,17 +635,19 @@
         };
         
         window.adjustScale = function(delta) {
-            if (currentModel) {
-                currentModel.scale.x += delta;
-                currentModel.scale.y += delta;
-                currentModel.scale.z += delta;
+            if (modelContainer) {
+                // Aplicar el ajuste de escala al contenedor
+                modelContainer.scale.x += delta;
+                modelContainer.scale.y += delta;
+                modelContainer.scale.z += delta;
                 
                 // Asegurar que la escala no sea negativa
-                currentModel.scale.x = Math.max(0.1, currentModel.scale.x);
-                currentModel.scale.y = Math.max(0.1, currentModel.scale.y);
-                currentModel.scale.z = Math.max(0.1, currentModel.scale.z);
+                modelContainer.scale.x = Math.max(0.1, modelContainer.scale.x);
+                modelContainer.scale.y = Math.max(0.1, modelContainer.scale.y);
+                modelContainer.scale.z = Math.max(0.1, modelContainer.scale.z);
+
+                showAlert(`Escala ajustada a ${modelContainer.scale.x.toFixed(1)}`);
             }
-            showAlert(`Escala ajustada en ${delta.toFixed(1)}`);
         };
 
 
