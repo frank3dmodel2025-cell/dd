@@ -10,6 +10,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <!-- Incluir DeviceOrientationControls para facilitar el uso de sensores de movimiento -->
     <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/Duck/glTF/Duck.gltf"></script>
     <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/GLTFLoader.js"></script>
     <!-- Usaremos DeviceOrientationControls para manejar la rotación de la cámara (no OrbitControls) -->
     <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/DeviceOrientationControls.js"></script>
@@ -252,7 +253,11 @@
             
             // 2. Camera (usar un campo de visión más amplio para AR)
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 0, 3);
+            
+            // CORRECCIÓN AR: La cámara debe comenzar en el origen (0, 0, 0) para que el modelo
+            // colocado en Z negativo esté delante de ella.
+            camera.position.set(0, 0, 0); 
+            camera.updateProjectionMatrix();
 
             // 3. Renderer
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -271,6 +276,9 @@
             // 5. Controls (OrbitControls por defecto para el modo Rotar)
             controls = new THREE.OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
+            // Ajustamos el target para que el OrbitControls mire hacia la posición inicial del modelo
+            controls.target.set(0, 0, -2); 
+            controls.update(); 
             
             // 6. Model Container (un grupo vacío para manipular el modelo)
             modelContainer = new THREE.Group();
@@ -407,15 +415,7 @@
                 
                 // Proyectar el rayo sobre el plano imaginario
                 if (raycaster.ray.intersectPlane(plane, intersectionPoint)) {
-                    // Mover el objeto en el eje X e Y del mundo 3D
-                    // Aquí se requiere más lógica compleja para un arrastre perfecto en 3D
-                    // Para simplificar, ajustaremos la posición en base al delta de movimiento del puntero
-                    
-                    // *** NOTA ***: La lógica de arrastre 3D simple es compleja. 
-                    // Para el visor de AR, usaremos principalmente los sliders para X/Y. 
-                    // Mantenemos la estructura del drag, pero nos enfocaremos en los sliders para el AR.
-                    
-                    // Simple movimiento de offset (NO ideal para 3D, pero ilustrativo)
+                    // Simple movimiento de offset
                     const deltaX = event.movementX * 0.005; 
                     const deltaY = event.movementY * 0.005;
                     dragObject.position.x += deltaX;
@@ -581,7 +581,7 @@
             const zRot = parseFloat(document.getElementById('ar-z-slider').value) * (Math.PI / 180);
 
             // Actualizar la posición y rotación del contenedor del modelo
-            // Colocamos el modelo delante de la cámara (por defecto a 2 unidades de distancia)
+            // Z=-2 lo coloca 2 unidades delante de la cámara (que está en 0, 0, 0)
             modelContainer.position.set(x, y, -2); 
             modelContainer.rotation.z = zRot;
             
