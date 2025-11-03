@@ -713,6 +713,40 @@ window.toggleModelSelector = toggleModelSelector;
 window.startRelocate = startRelocate;
 window.resetScale = resetScale;
 
+
+    // --- Sistema de anclaje pseudo-realista (profundidad compensada) ---
+let anchorActive = false;
+let lastZ = 0;
+let smoothedDelta = 0;
+const anchorCompensation = 0.002; // sensibilidad (ajustar entre 0.001–0.003)
+
+function enableAnchorEffect() {
+  anchorActive = true;
+  window.addEventListener('devicemotion', handleMotion, true);
+}
+
+function disableAnchorEffect() {
+  anchorActive = false;
+  window.removeEventListener('devicemotion', handleMotion, true);
+}
+
+function handleMotion(event) {
+  if (!anchorActive || !modelContainer) return;
+
+  const accZ = event.accelerationIncludingGravity?.z || 0;
+
+  // filtro de suavizado
+  smoothedDelta = smoothedDelta * 0.9 + (accZ - lastZ) * 0.1;
+  lastZ = accZ;
+
+  // compensar desplazamiento en Z (pequeños ajustes)
+  const compensation = -smoothedDelta * anchorCompensation;
+  modelContainer.position.z += compensation;
+
+  // limitar desplazamiento para no alejarse demasiado
+  modelContainer.position.z = THREE.MathUtils.clamp(modelContainer.position.z, -4, -1);
+}
+
 </script>
 </body>
 </html>
