@@ -1,752 +1,155 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Visor AR con Placement Dot — Galería</title>
-    
-    <!-- Tailwind y Three.js -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/OrbitControls.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/DeviceOrientationControls.js"></script>
-
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        body { font-family: 'Poppins', sans-serif; background-color:#f7f3ed; color:#3b4233; overflow:hidden; touch-action:none; }
-        canvas { display:block; width:100%; height:100vh; position:absolute; top:0; left:0; z-index:10; }
-        video.video-background { position:fixed; top:0; left:0; width:100%; height:100%; object-fit:cover; z-index:5; display:none; }
-        .glass-panel { backdrop-filter: blur(10px) saturate(180%); background-color: rgba(255,255,255,0.75); border:1px solid rgba(255,255,255,0.125); box-shadow:0 8px 32px rgba(31,38,135,0.37); }
-        #control-panel { transition: transform .3s ease-in-out; transform: translateX(100%); }
-        #control-panel.is-visible { transform: translateX(0); }
-        /* Placement dot */
-        #placement-dot {
-          position: fixed;
-          top: 50%;
-          left: 50%;
-          width: 62px;
-          height: 62px;
-          transform: translate(-50%, -50%);
-          border-radius: 50%;
-          z-index: 22;
-          display: none;
-          align-items: center;
-          justify-content: center;
-          pointer-events: auto;
-        }
-        #placement-dot .inner {
-          width: 42px;
-          height: 42px;
-          border-radius: 50%;
-          background: rgba(255,255,255,0.6);
-          border: 2px solid rgba(0,0,0,0.45);
-          box-shadow: 0 6px 18px rgba(0,0,0,0.25);
-        }
-        #placement-dot .pulse {
-          position:absolute; width:100%; height:100%; border-radius:50%;
-          background: radial-gradient(circle, rgba(0,128,0,0.12) 0%, rgba(0,128,0,0.02) 60%, rgba(0,128,0,0) 100%);
-          animation: pulse 1.6s infinite;
-          z-index:1;
-        }
-        @keyframes pulse { 0% { transform: scale(.95); opacity:1 } 70% { transform: scale(1.4); opacity:0 } 100% { opacity:0 } }
-        /* Small helper text */
-        #placement-hint { position: fixed; left:50%; transform: translateX(-50%); bottom: 18px; z-index:22; background:rgba(0,0,0,0.55); color:#fff; padding:8px 12px; border-radius:8px; display:none; font-size:13px;}
-        /* ensure UI elements above canvas */
-        #menu-icon { z-index: 24; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>viewAR Minimal AR</title>
+<style>
+  body, html { margin: 0; padding: 0; overflow: hidden; background: #f0f0f0; }
+  #ui {
+    position: absolute; top: 10px; left: 10px; z-index: 10;
+    display: flex; gap: 10px;
+  }
+  button { padding: 8px 12px; border:none; background:#333;color:white; border-radius:6px; cursor:pointer;}
+  button:hover{opacity:0.8;}
+</style>
 </head>
-<body class="bg-gray-100 antialiased">
+<body>
 
-    <!-- Video passthrough -->
-    <video id="video-feed" class="video-background" autoplay playsinline></video>
+<div id="ui">
+  <button id="toggleTheme">Modo Oscuro</button>
+  <button id="reubicBtn" style="display:none;">Reubicar</button>
+  <button id="resetScaleBtn" style="display:none;">Reset Escala</button>
+</div>
 
-    <!-- 3D container -->
-    <div id="three-container"></div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/DeviceOrientationControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/loaders/GLTFLoader.js"></script>
 
-    <!-- Placement dot (overlay) -->
-    <div id="placement-dot" role="button" aria-label="Point to place model" tabindex="0">
-      <div class="pulse"></div>
-      <div class="inner"></div>
-    </div>
-    <div id="placement-hint">Mueve el punto. Doble tap para colocar.</div>
+<script>
+let scene, camera, renderer, controls;
+let currentModel = null, modelContainer;
+let placedOnce = false;
+let isDarkMode = false;
+let lastZ = 0, lastMotionZ = 0;
 
-    <!-- Control panel -->
-    <button id="menu-icon" class="fixed top-4 right-4 p-3 bg-indigo-600 text-white rounded-full shadow-lg transition-transform hover:scale-105" onclick="toggleControlPanel()">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
-    </button>
+// ---------------- Scene ----------------
+scene = new THREE.Scene();
+camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 100);
+camera.position.set(0, 1.5, 3);
 
-    <div id="control-panel" class="fixed top-0 right-0 h-full w-full md:w-80 z-50 p-6 glass-panel overflow-y-auto">
-        <button id="close-icon" class="absolute top-4 right-4 p-2 text-gray-600 rounded-full hover:bg-gray-200" onclick="toggleControlPanel()">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-        </button>
+renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
 
-        <h2 class="text-2xl font-bold mb-6 text-indigo-800 pt-8 md:pt-0">Controles de Visor 3D</h2>
+// ---------------- Light ----------------
+const ambient = new THREE.AmbientLight(0xffffff, 0.8);
+scene.add(ambient);
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+dirLight.position.set(3,5,2);
+scene.add(dirLight);
 
-        <div class="mb-4">
-            <h3 class="font-semibold mb-2">Modelo Actual: <span id="current-model" class="text-indigo-600">Duck</span></h3>
-            <button class="px-4 py-2 rounded bg-gray-200 w-full" onclick="toggleModelSelector(true)">Cambiar Modelo</button>
-        </div>
+// ---------------- Controls ----------------
+controls = new THREE.DeviceOrientationControls(camera);
 
-        <div class="mb-4">
-            <h3 class="font-semibold mb-2">Modo Interacción</h3>
-            <p class="text-sm text-gray-600 mb-2">Actual: <span id="lock-status" class="font-medium text-gray-900">OFF (Rotar)</span></p>
-            <button class="px-4 py-2 rounded bg-indigo-600 text-white w-full" onclick="toggleInteractionMode()">Alternar (Rotar/Mover)</button>
-        </div>
+// ---------------- Model Container ----------------
+modelContainer = new THREE.Object3D();
+scene.add(modelContainer);
 
-        <div class="mb-6 border-t pt-4 border-gray-300">
-            <h3 class="font-bold text-lg mb-3 text-red-600">MODO PARED (AR Simulado)</h3>
-            <p class="text-sm text-gray-600 mb-2">Estado: <span id="ar-mode-status" class="font-medium text-gray-900">Inactivo</span></p>
-            <button id="toggle-ar-mode-btn" class="px-4 py-2 rounded bg-red-500 text-white w-full" onclick="toggleARMode()">Activar Cámara y AR</button>
-            <button id="reubic-btn" class="mt-3 px-4 py-2 rounded bg-yellow-400 text-black w-full" onclick="startRelocate()" style="display:none;">Reubicar modelo</button>
-            <button id="reset-scale-btn" class="mt-2 px-4 py-2 rounded bg-gray-200 text-black w-full" onclick="resetScale()" style="display:none;">Reiniciar escala</button>
-        </div>
-
-        <div id="placement-controls" class="space-y-4 pt-4 border-t border-gray-300 hidden">
-            <h3 class="font-semibold text-gray-800">Ajuste de Posición Fina</h3>
-            <div class="pt-2">
-                <h4 class="font-medium text-sm mb-1">Rastreo de Movimiento:</h4>
-                <button id="toggle-motion-btn" class="px-4 py-2 rounded bg-green-500 text-white w-full" onclick="toggleMotionTracking(true)">Activar Rastreo de Rotación</button>
-                <p class="text-xs mt-1 text-gray-500">Mantiene el modelo fijo en la pared al mover el teléfono.</p>
-            </div>
-
-            <div>
-                <label for="ar-x-slider" class="block text-sm font-medium text-gray-700">Posición Horizontal (X): <span id="ar-x-value">0.0</span></label>
-                <input type="range" id="ar-x-slider" min="-5" max="5" value="0" step="0.1" class="w-full" oninput="updateModelPlacement()">
-            </div>
-            <div>
-                <label for="ar-y-slider" class="block text-sm font-medium text-gray-700">Posición Vertical (Y): <span id="ar-y-value">0.0</span></label>
-                <input type="range" id="ar-y-slider" min="-5" max="5" value="0" step="0.1" class="w-full" oninput="updateModelPlacement()">
-            </div>
-            <div>
-                <label for="ar-z-slider" class="block text-sm font-medium text-gray-700">Rotación (Z): <span id="ar-z-value">0.0</span>°</label>
-                <input type="range" id="ar-z-slider" min="-180" max="180" value="0" step="1" class="w-full" oninput="updateModelPlacement()">
-            </div>
-            <div class="pt-4 border-t border-gray-300">
-                <h4 class="font-semibold text-gray-800 mb-2">Escala</h4>
-                <div class="flex space-x-2">
-                    <button class="px-4 py-2 rounded bg-gray-200 flex-1" onclick="adjustScale(-0.1)">Reducir</button>
-                    <button class="px-4 py-2 rounded bg-gray-200 flex-1" onclick="adjustScale(0.1)">Aumentar</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Model selector modal -->
-    <div id="model-selector-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-300">
-        <div class="bg-white rounded-xl p-8 shadow-2xl w-full max-w-sm">
-            <h3 class="text-xl font-bold mb-4">Seleccionar Modelo GLTF</h3>
-            <div class="space-y-3">
-                <button class="px-4 py-2 rounded bg-gray-200 w-full" onclick="selectModel('Duck')">Duck</button>
-                <button class="px-4 py-2 rounded bg-gray-200 w-full" onclick="selectModel('Helmet')">Helmet</button>
-                <button class="px-4 py-2 rounded bg-gray-200 w-full" onclick="selectModel('BoomBox')">BoomBox</button>
-            </div>
-            <button class="mt-6 px-4 py-2 rounded bg-indigo-600 text-white w-full" onclick="toggleModelSelector(false)">Cerrar</button>
-        </div>
-    </div>
-
-    <!-- alert -->
-    <div id="custom-alert" class="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-6 py-3 rounded-lg shadow-xl text-white bg-indigo-600 opacity-0 pointer-events-none transition-opacity duration-300">
-        <span id="alert-message"></span>
-    </div>
-
-<script type="module">
-/* ------------------------------------------------------------
-   Visor AR con Placement Dot integrado
-   - Double tap en el punto para colocar el modelo
-   - Drag del punto para posicionarlo
-   - Pinch para escalar el modelo
-   - Reubicar desde el panel
-   ------------------------------------------------------------ */
-
-let scene, camera, renderer, controls, gltfLoader;
-let modelContainer = null, currentModel = null;
-let deviceOrientationControls;
-let isARMode = false, isMotionTrackingActive = false;
-const videoElement = document.getElementById('video-feed');
-
-const MODELS = {
-  Duck: 'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/Duck/glTF/Duck.gltf',
-  Helmet: 'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf',
-  BoomBox: 'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/BoomBox/glTF/BoomBox.gltf'
-};
-
-// UI elements
-const placementDot = document.getElementById('placement-dot');
-const placementHint = document.getElementById('placement-hint');
-const reubicBtn = document.getElementById('reubic-btn');
-const resetScaleBtn = document.getElementById('reset-scale-btn');
-
-let lastTapTime = 0;
-let placedOnce = false; // si el modelo ya fue colocado
-
-// Pinch state for scaling
-let pinchState = { active:false, lastDist:0 };
-
-// Initialize Three
-function initThree(){
-  scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
-  camera.position.set(0,0,0);
-  camera.updateProjectionMatrix();
-
-  renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
-  renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.setSize(innerWidth, innerHeight);
-  renderer.setClearColor(0x3b4233, 1);
-  document.getElementById('three-container').appendChild(renderer.domElement);
-
-  const ambient = new THREE.AmbientLight(0xffffff, 1.5); scene.add(ambient);
-  const dir = new THREE.DirectionalLight(0xffffff, 1); dir.position.set(5,5,5); scene.add(dir);
-
-  controls = new THREE.OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-  controls.target.set(0,0,-2);
-  controls.update();
-
-  modelContainer = new THREE.Group();
-  scene.add(modelContainer);
-
-  gltfLoader = new THREE.GLTFLoader();
-
-  deviceOrientationControls = new THREE.DeviceOrientationControls(camera);
-
-  window.addEventListener('resize', onWindowResize);
-
-  // touch listeners for pinch-scale on whole canvas
-  renderer.domElement.addEventListener('touchstart', onTouchStart, { passive:false });
-  renderer.domElement.addEventListener('touchmove', onTouchMove, { passive:false });
-  renderer.domElement.addEventListener('touchend', onTouchEnd, { passive:false });
-}
-
-// Load model
-function loadModelByName(name){
-  document.getElementById('current-model').textContent = name;
-  if (currentModel) {
-    modelContainer.remove(currentModel);
-    disposeModel(currentModel);
-    currentModel = null;
-  }
-  showAlert(`Cargando ${name}...`);
-  gltfLoader.load(MODELS[name], gltf=>{
+// ---------------- Load Model ----------------
+const loader = new THREE.GLTFLoader();
+loader.load('modelo.glb', gltf => {
     currentModel = gltf.scene;
-    // centrar y escalar a tamaño inicial
-    const box = new THREE.Box3().setFromObject(currentModel);
-    const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
-    currentModel.position.sub(center);
-    const scaleFactor = 1.5 / Math.max(size.x, size.y, size.z);
-    currentModel.scale.setScalar(scaleFactor);
+    currentModel.visible = false;
+    currentModel.scale.set(1,1,1);
     modelContainer.add(currentModel);
+});
 
-    // añadir contact shadow (sprite)
-    addContactShadow(currentModel, size.y);
-
-    showAlert(`${name} cargado.`);
-    // si ya fue colocado anteriormente, mantener visibilidad
-    if (placedOnce) {
-      currentModel.visible = true;
-    } else {
-      currentModel.visible = false;
-    }
-  }, undefined, err=>{
-    console.error('Error cargando GLTF', err);
-    showAlert('Error cargando modelo.');
-  });
-}
-
-function disposeModel(obj){
-  obj.traverse(o=>{
-    if (o.isMesh){
-      if (o.geometry) o.geometry.dispose();
-      if (o.material){
-        if (Array.isArray(o.material)){
-          o.material.forEach(m=>m.dispose());
-        } else m.dispose();
-      }
-    }
-  });
-}
-
-function addContactShadow(model, modelHeight){
-  const c = document.createElement('canvas'); c.width=c.height=256;
-  const ctx = c.getContext('2d');
-  const g = ctx.createRadialGradient(128,128,10,128,128,128);
-  g.addColorStop(0,'rgba(0,0,0,0.6)'); g.addColorStop(1,'rgba(0,0,0,0)');
-  ctx.fillStyle = g; ctx.fillRect(0,0,256,256);
-  const tex = new THREE.CanvasTexture(c);
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent:true, depthWrite:false }));
-  sprite.name = 'contactShadow';
-  sprite.position.set(0, - (modelHeight/2 || 0.5), 0);
-  sprite.scale.set(1.6,1.6,1);
-  model.add(sprite);
-}
-
-// Window resize
-function onWindowResize(){
-  if (!camera || !renderer) return;
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-}
-
-// Animate
-function animate(){
-  requestAnimationFrame(animate);
-  if (controls && controls.enabled) controls.update();
-  if (isMotionTrackingActive && deviceOrientationControls) deviceOrientationControls.update();
-  renderer.render(scene, camera);
-}
-
-// UI helpers
-function showAlert(msg){
-  const box = document.getElementById('custom-alert');
-  document.getElementById('alert-message').textContent = msg;
-  box.classList.remove('opacity-0','pointer-events-none');
-  box.classList.add('opacity-100','pointer-events-auto');
-  clearTimeout(box._t);
-  box._t = setTimeout(()=>{ box.classList.remove('opacity-100','pointer-events-auto'); box.classList.add('opacity-0','pointer-events-none'); }, 2200);
-}
-
-/* -------------------------
-   Placement dot behavior
-   ------------------------- */
-function showPlacementDot(show){
-  placementDot.style.display = show ? 'flex' : 'none';
-  placementHint.style.display = show ? 'block' : 'none';
-  // make dot pointer active or not
-  if (show) placementDot.setAttribute('aria-hidden', 'false'); else placementDot.setAttribute('aria-hidden','true');
-}
-
-// convert 2D screen coords to 3D world position at a fixed distance in front of camera
-function screenToWorld(x, y, distance = 2.0){
-  // NDC coordinates
-  const ndcX = (x / window.innerWidth) * 2 - 1;
-  const ndcY = - (y / window.innerHeight) * 2 + 1;
-  const ndcZ = 0.5; // use z=0.5 then project and cast
-  const vec = new THREE.Vector3(ndcX, ndcY, ndcZ).unproject(camera);
-  const dir = vec.sub(camera.position).normalize();
-  const pos = camera.position.clone().add(dir.multiplyScalar(distance));
-  return pos;
-}
-
+// ---------------- AR Placement ----------------
+let lastTapTime = 0;
 function placeModelAtScreen(x, y){
-  if (!modelContainer) return;
-  const pos = screenToWorld(x, y, 2.0);
-  modelContainer.position.copy(pos);
-  // reset rotation to align with camera-facing wall-ish
-  modelContainer.rotation.set(0,0,0);
-  // make model visible
-  if (currentModel) currentModel.visible = true;
-  placedOnce = true;
-  showPlacementDot(false);
-  reubicBtn.style.display = 'block';
-  resetScaleBtn.style.display = 'block';
-  showAlert('Modelo colocado ✅');
-  // update sliders with new position (optional)
-  document.getElementById('ar-x-slider').value = modelContainer.position.x;
-  document.getElementById('ar-y-slider').value = modelContainer.position.y;
-  document.getElementById('ar-x-value').textContent = modelContainer.position.x.toFixed(1);
-  document.getElementById('ar-y-value').textContent = modelContainer.position.y.toFixed(1);
+    const pos = screenToWorld(x,y,2.5); // distancia fija
+    modelContainer.position.copy(pos);
+    modelContainer.rotation.set(0,0,0);
+    currentModel.visible = true;
+    placedOnce = true;
+    document.getElementById('reubicBtn').style.display = 'block';
+    document.getElementById('resetScaleBtn').style.display = 'block';
 }
 
-// Double tap detection & drag on placement dot
-(function setupPlacementDotEvents(){
-  let dragging = false;
-  let startTouchOffset = { x:0, y:0 };
+function screenToWorld(x, y, zDist){
+    const vector = new THREE.Vector3(
+        (x / window.innerWidth) * 2 - 1,
+        -(y / window.innerHeight) * 2 + 1,
+        0.5
+    );
+    vector.unproject(camera);
+    const dir = vector.sub(camera.position).normalize();
+    return camera.position.clone().add(dir.multiplyScalar(zDist));
+}
 
-  // Pointer support (desktop)
-  placementDot.addEventListener('pointerdown', (e)=>{
-    e.preventDefault();
-    dragging = true;
-    placementDot.setPointerCapture(e.pointerId);
-    startTouchOffset.x = e.clientX - placementDot.getBoundingClientRect().left;
-    startTouchOffset.y = e.clientY - placementDot.getBoundingClientRect().top;
-  });
-  placementDot.addEventListener('pointermove', (e)=>{
-    if (!dragging) return;
-    e.preventDefault();
-    const nx = e.clientX - startTouchOffset.x + placementDot.offsetWidth/2;
-    const ny = e.clientY - startTouchOffset.y + placementDot.offsetHeight/2;
-    placementDot.style.left = `${Math.max(8, Math.min(window.innerWidth-8, nx))}px`;
-    placementDot.style.top = `${Math.max(8, Math.min(window.innerHeight-8, ny))}px`;
-  });
-  placementDot.addEventListener('pointerup', (e)=>{
-    dragging = false;
-    try { placementDot.releasePointerCapture(e.pointerId); } catch(e){}
-    handleDotTap(e.clientX, e.clientY);
-  });
-
-  // Touch support (mobile)
-  placementDot.addEventListener('touchstart', (e)=>{
-    e.preventDefault();
-    if (e.touches.length === 1){
-      const t = e.touches[0];
-      dragging = true;
-      startTouchOffset.x = t.clientX - placementDot.getBoundingClientRect().left;
-      startTouchOffset.y = t.clientY - placementDot.getBoundingClientRect().top;
-    }
-  }, { passive:false });
-
-  placementDot.addEventListener('touchmove', (e)=>{
-    if (!dragging) return;
-    e.preventDefault();
-    const t = e.touches[0];
-    const nx = t.clientX - startTouchOffset.x + placementDot.offsetWidth/2;
-    const ny = t.clientY - startTouchOffset.y + placementDot.offsetHeight/2;
-    placementDot.style.left = `${Math.max(8, Math.min(window.innerWidth-8, nx))}px`;
-    placementDot.style.top = `${Math.max(8, Math.min(window.innerHeight-8, ny))}px`;
-  }, { passive:false });
-
-  placementDot.addEventListener('touchend', (e)=>{
-    dragging = false;
-    const t = (e.changedTouches && e.changedTouches[0]) || {};
-    const x = t.clientX || (placementDot.getBoundingClientRect().left + placementDot.offsetWidth/2);
-    const y = t.clientY || (placementDot.getBoundingClientRect().top + placementDot.offsetHeight/2);
-    handleDotTap(x, y);
-  }, { passive:false });
-
-  function handleDotTap(clientX, clientY){
+// ---------------- Touch & Gesture ----------------
+window.addEventListener('touchend', (e)=>{
     const now = Date.now();
-    const dt = now - lastTapTime;
+    if(now - lastTapTime < 300){
+        const t = e.changedTouches[0];
+        placeModelAtScreen(t.clientX, t.clientY);
+    }
     lastTapTime = now;
-    // double tap threshold 300ms
-    if (dt < 300){
-      // double tap -> place model
-      placeModelAtScreen(clientX, clientY);
-    } else {
-      // single tap (no-op or small feedback)
-      // small pulse feedback
-      placementDot.style.transform = 'translate(-50%,-50%) scale(0.98)';
-      setTimeout(()=> placementDot.style.transform = 'translate(-50%,-50%) scale(1)', 120);
+}, false);
+
+let initialPinch = null;
+window.addEventListener('touchmove', (e)=>{
+    if(e.touches.length == 2 && currentModel){
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if(initialPinch == null) initialPinch = dist;
+        let scaleDelta = (dist - initialPinch) * 0.005;
+        currentModel.scale.multiplyScalar(1 + scaleDelta);
+        initialPinch = dist;
     }
-  }
-})();
+});
+window.addEventListener('touchend', ()=>{initialPinch = null;});
 
-/* -------------------------
-   Pinch-to-scale handlers
-   ------------------------- */
-function onTouchStart(e){
-  if (e.touches && e.touches.length === 2){
-    pinchState.active = true;
-    const dx = e.touches[0].clientX - e.touches[1].clientX;
-    const dy = e.touches[0].clientY - e.touches[1].clientY;
-    pinchState.lastDist = Math.hypot(dx, dy);
-  }
-}
-function onTouchMove(e){
-  if (pinchState.active && e.touches && e.touches.length === 2 && currentModel){
-    e.preventDefault();
-    const dx = e.touches[0].clientX - e.touches[1].clientX;
-    const dy = e.touches[0].clientY - e.touches[1].clientY;
-    const newDist = Math.hypot(dx, dy);
-    if (pinchState.lastDist > 0){
-      const factor = newDist / pinchState.lastDist;
-      // scale with limits
-      const newScale = Math.max(0.05, Math.min(10, currentModel.scale.x * factor));
-      currentModel.scale.set(newScale, newScale, newScale);
-      // update shadow scale if present
-      const shadow = currentModel.getObjectByName('contactShadow');
-      if (shadow) shadow.scale.set(newScale*2, newScale*2, 1);
-    }
-    pinchState.lastDist = newDist;
-  }
-}
-function onTouchEnd(e){
-  if (!e.touches || e.touches.length < 2) pinchState.active = false;
+// ---------------- Device Motion ----------------
+window.addEventListener('devicemotion', (e)=>{
+    lastMotionZ = e.accelerationIncludingGravity.z || 0;
+});
+
+// ---------------- Update Anchor Effect ----------------
+function updateAnchorEffect(){
+    if(!placedOnce || !currentModel) return;
+    const deltaZ = (lastMotionZ - lastZ) * 0.02;
+    lastZ = lastMotionZ;
+    modelContainer.position.z = THREE.MathUtils.clamp(modelContainer.position.z + deltaZ, -4, -1);
 }
 
-/* -------------------------
-   AR mode: camera passthrough
-   ------------------------- */
-async function startCameraPassThrough(){
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    videoElement.srcObject = stream;
-    videoElement.style.display = 'block';
-    videoElement.play();
-    // make canvas transparent so video shows behind
-    renderer.setClearColor(0x000000, 0);
-    renderer.domElement.style.zIndex = 10;
-    return true;
-  } catch(err){
-    console.error('Camera error', err);
-    showAlert('No se pudo activar la cámara. Revisa permisos.');
-    return false;
-  }
+// ---------------- UI ----------------
+document.getElementById('toggleTheme').addEventListener('click', ()=>{
+    isDarkMode = !isDarkMode;
+    document.body.style.background = isDarkMode ? '#111' : '#f0f0f0';
+    document.getElementById('toggleTheme').innerText = isDarkMode ? 'Modo Claro' : 'Modo Oscuro';
+});
+document.getElementById('reubicBtn').addEventListener('click', ()=>{placedOnce=false; currentModel.visible=false;});
+document.getElementById('resetScaleBtn').addEventListener('click', ()=>{if(currentModel) currentModel.scale.set(1,1,1);});
+
+// ---------------- Animate ----------------
+function animate(){
+    requestAnimationFrame(animate);
+    controls.update();
+    updateAnchorEffect();
+    renderer.render(scene,camera);
 }
-function stopCameraPassThrough(){
-  if (videoElement.srcObject){
-    videoElement.srcObject.getTracks().forEach(t=>t.stop());
-  }
-  videoElement.srcObject = null;
-  videoElement.style.display = 'none';
-  renderer.setClearColor(0x3b4233, 1);
-  renderer.domElement.style.zIndex = 10;
-}
+animate();
 
-/* Toggle AR mode (show dot & camera) */
-async function toggleARMode(){
-  isARMode = !isARMode;
-  const statusSpan = document.getElementById('ar-mode-status');
-  const controlsDiv = document.getElementById('placement-controls');
-  const toggleBtn = document.getElementById('toggle-ar-mode-btn');
-
-  if (isARMode){
-    const ok = await startCameraPassThrough();
-    if (!ok){ isARMode = false; return; }
-    statusSpan.textContent = 'Activo';
-    controlsDiv.classList.remove('hidden');
-    toggleBtn.textContent = 'Desactivar Cámara y AR';
-    toggleBtn.classList.remove('bg-red-500'); toggleBtn.classList.add('bg-green-600');
-    // disable orbit controls, enable touch placement
-    controls.enabled = false;
-    document.getElementById('lock-status').textContent = 'ON (Mover)';
-    // show placement dot if model not already placed
-    if (!placedOnce){
-      showPlacementDot(true);
-      // position dot center if hidden
-      placementDot.style.left = '50%'; placementDot.style.top = '50%';
-      placementDot.style.display = 'flex';
-      placementHint.style.display = 'block';
-    } else {
-      // model already placed - show Reubicar option
-      showPlacementDot(false);
-      placementHint.style.display = 'none';
-      reubicBtn.style.display = 'block';
-      resetScaleBtn.style.display = 'block';
-    }
-    // auto enable motion tracking for realism
-    toggleMotionTracking(true);
-  } else {
-    stopCameraPassThrough();
-    statusSpan.textContent = 'Inactivo';
-    controlsDiv.classList.add('hidden');
-    toggleBtn.textContent = 'Activar Cámara y AR';
-    toggleBtn.classList.remove('bg-green-600'); toggleBtn.classList.add('bg-red-500');
-    controls.enabled = true;
-    document.getElementById('lock-status').textContent = 'OFF (Rotar)';
-    // hide placement ui
-    showPlacementDot(false);
-    placementHint.style.display = 'none';
-    // keep model visible if was placed
-    toggleMotionTracking(false);
-  }
-}
-
-// toggle motion tracking (DeviceOrientation)
-function toggleMotionTracking(forceState){
-  const motionBtn = document.getElementById('toggle-motion-btn');
-  isMotionTrackingActive = (typeof forceState === 'boolean') ? forceState : !isMotionTrackingActive;
-  if (!isARMode){
-    showAlert('Activa Modo AR primero.');
-    isMotionTrackingActive = false;
-    return;
-  }
-  if (isMotionTrackingActive){
-    // request permission on iOS
-    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
-      DeviceOrientationEvent.requestPermission().then(p=>{
-        if (p === 'granted'){ deviceOrientationControls.connect(); deviceOrientationControls.enabled = true; motionBtn.textContent = 'Desactivar Rastreo de Rotación'; motionBtn.classList.remove('bg-green-500'); motionBtn.classList.add('bg-red-500'); showAlert('Giroscopio activo.'); }
-        else { isMotionTrackingActive = false; showAlert('Permiso giroscopio denegado.'); }
-      }).catch(e=>{ console.warn(e); showAlert('Error solicitando permiso giroscopio.'); isMotionTrackingActive=false; });
-    } else {
-      deviceOrientationControls.connect();
-      deviceOrientationControls.enabled = true;
-      motionBtn.textContent = 'Desactivar Rastreo de Rotación';
-      motionBtn.classList.remove('bg-green-500'); motionBtn.classList.add('bg-red-500');
-      showAlert('Giroscopio activo.');
-    }
-  } else {
-    try { deviceOrientationControls.disconnect(); } catch(e){}
-    deviceOrientationControls.enabled = false;
-    motionBtn.textContent = 'Activar Rastreo de Rotación';
-    motionBtn.classList.remove('bg-red-500'); motionBtn.classList.add('bg-green-500');
-    camera.rotation.set(0,0,0);
-    showAlert('Giroscopio desactivado.');
-  }
-}
-
-/* Reubicar: mostrar dot y let user place again */
-function startRelocate(){
-  if (!isARMode){
-    showAlert('Activa Modo AR para reubicar.');
-    return;
-  }
-  showPlacementDot(true);
-  placementDot.style.left = `${window.innerWidth/2}px`;
-  placementDot.style.top = `${window.innerHeight/2}px`;
-  // hide model until placed again (optional - keep visible as ghost)
-  if (currentModel) currentModel.visible = true;
-  showAlert('Mueve el punto y doble tap para confirmar la nueva posición.');
-}
-
-/* Reset scale */
-function resetScale(){
-  if (!currentModel) return;
-  currentModel.scale.setScalar(1.0);
-  const shadow = currentModel.getObjectByName('contactShadow');
-  if (shadow) shadow.scale.set(2,2,1);
-  showAlert('Escala reiniciada.');
-}
-
-/* Interaction mode toggle (Orbit / Move) */
-function toggleInteractionMode(){
-  if (controls.enabled){
-    controls.enabled = false;
-    document.getElementById('lock-status').textContent = 'ON (Mover)';
-    renderer.domElement.addEventListener('pointerdown', onPointerDownForDrag, false);
-    showAlert('Modo Mover activado.');
-  } else {
-    controls.enabled = true;
-    document.getElementById('lock-status').textContent = 'OFF (Rotar)';
-    renderer.domElement.removeEventListener('pointerdown', onPointerDownForDrag, false);
-    showAlert('Modo Rotar activado.');
-  }
-}
-
-/* Simple drag for moving model in normal (non-AR) mode */
-let dragObject = null;
-const pointer = new THREE.Vector2();
-const raycaster = new THREE.Raycaster();
-
-function onPointerDownForDrag(event){
-  pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
-  pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
-  raycaster.setFromCamera(pointer, camera);
-  if (!currentModel) return;
-  const intersects = raycaster.intersectObjects(currentModel.children, true);
-  if (intersects.length > 0){
-    dragObject = modelContainer;
-    renderer.domElement.addEventListener('pointermove', onPointerMoveForDrag, false);
-    renderer.domElement.addEventListener('pointerup', onPointerUpForDrag, false);
-    showAlert('Arrastrando modelo...');
-  }
-}
-function onPointerMoveForDrag(event){
-  if (!dragObject) return;
-  const moveX = event.movementX || 0;
-  const moveY = event.movementY || 0;
-  dragObject.position.x += moveX * 0.005;
-  dragObject.position.y -= moveY * 0.005;
-  if (!isARMode){
-    document.getElementById('ar-x-slider').value = dragObject.position.x;
-    document.getElementById('ar-y-slider').value = dragObject.position.y;
-    document.getElementById('ar-x-value').textContent = dragObject.position.x.toFixed(1);
-    document.getElementById('ar-y-value').textContent = dragObject.position.y.toFixed(1);
-  }
-}
-function onPointerUpForDrag(){
-  dragObject = null;
-  renderer.domElement.removeEventListener('pointermove', onPointerMoveForDrag, false);
-  renderer.domElement.removeEventListener('pointerup', onPointerUpForDrag, false);
-}
-
-/* Update model placement from sliders (non-AR) */
-function updateModelPlacement(){
-  if (!modelContainer) return;
-  const x = parseFloat(document.getElementById('ar-x-slider').value);
-  const y = parseFloat(document.getElementById('ar-y-slider').value);
-  const zRot = parseFloat(document.getElementById('ar-z-slider').value) * Math.PI/180;
-  modelContainer.position.set(x, y, -2);
-  modelContainer.rotation.z = zRot;
-  document.getElementById('ar-x-value').textContent = x.toFixed(1);
-  document.getElementById('ar-y-value').textContent = y.toFixed(1);
-  document.getElementById('ar-z-value').textContent = (zRot * 180/Math.PI).toFixed(0);
-}
-
-/* Scale adjust (buttons) */
-function adjustScale(delta){
-  if (!currentModel) return;
-  currentModel.scale.x = Math.max(0.1, currentModel.scale.x + delta);
-  currentModel.scale.y = Math.max(0.1, currentModel.scale.y + delta);
-  currentModel.scale.z = Math.max(0.1, currentModel.scale.z + delta);
-  const shadow = currentModel.getObjectByName('contactShadow');
-  if (shadow) shadow.scale.set(currentModel.scale.x*2, currentModel.scale.x*2, 1);
-}
-
-/* Select model UI */
-function toggleModelSelector(show){
-  const modal = document.getElementById('model-selector-modal');
-  if (show){ modal.classList.remove('pointer-events-none','opacity-0'); modal.classList.add('opacity-100'); }
-  else { modal.classList.remove('opacity-100'); modal.classList.add('pointer-events-none','opacity-0'); }
-}
-function selectModel(name){
-  toggleModelSelector(false);
-  loadModelByName(name);
-}
-
-/* Reusable: on load */
-window.onload = function(){
-  initThree();
-  loadModelByName('Duck');
-  animate();
-  // initialize UI state
-  document.getElementById('placement-controls').classList.add('hidden');
-  document.getElementById('ar-mode-status').textContent = 'Inactivo';
-  document.getElementById('lock-status').textContent = 'OFF (Rotar)';
-  document.getElementById('control-panel').classList.remove('is-visible');
-};
-
-/* Extra helpers for menu toggle */
-window.toggleControlPanel = function(){
-  const panel = document.getElementById('control-panel');
-  const menuIcon = document.getElementById('menu-icon');
-  const closeIcon = document.getElementById('close-icon');
-  const visible = panel.classList.toggle('is-visible');
-  if (visible){ menuIcon.classList.add('hidden'); closeIcon.classList.remove('hidden'); }
-  else { menuIcon.classList.remove('hidden'); closeIcon.classList.add('hidden'); }
-};
-
-/* Small helpers for external accessibility */
-window.toggleARMode = toggleARMode;
-window.toggleMotionTracking = toggleMotionTracking;
-window.toggleInteractionMode = toggleInteractionMode;
-window.adjustScale = adjustScale;
-window.updateModelPlacement = updateModelPlacement;
-window.selectModel = selectModel;
-window.toggleModelSelector = toggleModelSelector;
-window.startRelocate = startRelocate;
-window.resetScale = resetScale;
-
-
-    // --- Sistema de anclaje pseudo-realista (profundidad compensada) ---
-let anchorActive = false;
-let lastZ = 0;
-let smoothedDelta = 0;
-const anchorCompensation = 0.002; // sensibilidad (ajustar entre 0.001–0.003)
-
-function enableAnchorEffect() {
-  anchorActive = true;
-  window.addEventListener('devicemotion', handleMotion, true);
-}
-
-function disableAnchorEffect() {
-  anchorActive = false;
-  window.removeEventListener('devicemotion', handleMotion, true);
-}
-
-function handleMotion(event) {
-  if (!anchorActive || !modelContainer) return;
-
-  const accZ = event.accelerationIncludingGravity?.z || 0;
-
-  // filtro de suavizado
-  smoothedDelta = smoothedDelta * 0.9 + (accZ - lastZ) * 0.1;
-  lastZ = accZ;
-
-  // compensar desplazamiento en Z (pequeños ajustes)
-  const compensation = -smoothedDelta * anchorCompensation;
-  modelContainer.position.z += compensation;
-
-  // limitar desplazamiento para no alejarse demasiado
-  modelContainer.position.z = THREE.MathUtils.clamp(modelContainer.position.z, -4, -1);
-}
-
+// ---------------- Resize ----------------
+window.addEventListener('resize', ()=>{
+    camera.aspect = window.innerWidth/window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
 </script>
+
 </body>
 </html>
