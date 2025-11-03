@@ -3,271 +3,159 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Visor AR Avanzado</title>
+<title>Visor AR Avanzado Realista</title>
 
 <!-- Tailwind CSS -->
 <script src="https://cdn.tailwindcss.com"></script>
 
-<!-- Three.js y dependencias -->
+<!-- Three.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/OrbitControls.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/DeviceOrientationControls.js"></script>
 
 <style>
-body { margin:0; font-family:'Poppins', sans-serif; overflow:hidden; background:#f7f3ed;}
+body { margin:0; overflow:hidden; background:#f7f3ed;}
 canvas{position:absolute; top:0; left:0; width:100%; height:100vh;}
 .video-background{position:fixed; top:0; left:0; width:100%; height:100%; object-fit:cover; z-index:5; display:none;}
-.glass-panel{backdrop-filter:blur(10px) saturate(180%); background:rgba(255,255,255,0.75); border:1px solid rgba(255,255,255,0.125); box-shadow:0 8px 32px rgba(31,38,135,0.37);}
-#placement-dot{position:fixed; top:50%; left:50%; width:62px; height:62px; transform:translate(-50%,-50%); border-radius:50%; z-index:22; display:none; align-items:center; justify-content:center;}
+#placement-dot{position:fixed; top:50%; left:50%; width:62px; height:62px; transform:translate(-50%,-50%); border-radius:50%; z-index:22; display:flex; align-items:center; justify-content:center;}
 #placement-dot .inner{width:42px; height:42px; border-radius:50%; background:rgba(255,255,255,0.6); border:2px solid rgba(0,0,0,0.45);}
-#placement-dot .pulse{position:absolute; width:100%; height:100%; border-radius:50%; background:radial-gradient(circle, rgba(0,128,0,0.12) 0%, rgba(0,128,0,0.02) 60%, rgba(0,128,0,0) 100%); animation:pulse 1.6s infinite; z-index:1;}
+#placement-dot .pulse{position:absolute; width:100%; height:100%; border-radius:50%; background:radial-gradient(circle, rgba(0,128,0,0.12) 0%, rgba(0,128,0,0.02) 60%, rgba(0,128,0,0) 100%); animation:pulse 1.6s infinite;}
 @keyframes pulse {0%{transform:scale(.95);opacity:1;}70%{transform:scale(1.4);opacity:0;}100%{opacity:0;}}
-#placement-hint{position:fixed; left:50%; transform:translateX(-50%); bottom:18px; z-index:22; background:rgba(0,0,0,0.55); color:#fff; padding:8px 12px; border-radius:8px; display:none; font-size:13px;}
-#request-permission-overlay{position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:1000; display:flex; align-items:center; justify-content:center; flex-direction:column; color:white; font-family:'Poppins',sans-serif; padding:1rem;}
-#request-permission-btn{padding:1rem 2rem; font-size:1.25rem; background:#2563eb; border-radius:0.5rem; cursor:pointer; border:none; color:white; margin-top:1rem; transition:0.3s;}
-#request-permission-btn:hover{background:#1d4ed8;}
 </style>
 </head>
 <body>
 
-<!-- Overlay permisos sensores iOS -->
-<div id="request-permission-overlay" style="display:none;">
-  <div>Para activar la realidad aumentada, necesitas otorgar permiso a los sensores del dispositivo.</div>
-  <button id="request-permission-btn">Permitir sensores</button>
-</div>
-
-<!-- Video passthrough -->
 <video id="video-feed" class="video-background" autoplay playsinline></video>
-
-<!-- 3D container -->
-<div id="three-container"></div>
-
-<!-- Placement dot -->
-<div id="placement-dot" role="button" tabindex="0">
-  <div class="pulse"></div>
-  <div class="inner"></div>
-</div>
-<div id="placement-hint">Mueve el punto. Doble tap para colocar.</div>
-
-<!-- Panel de control -->
-<div id="control-panel" class="fixed top-0 right-0 h-full w-80 z-50 p-6 glass-panel overflow-y-auto transform translate-x-full transition-transform duration-300">
-  <h2 class="text-2xl font-bold mb-6 text-indigo-800">Controles de Visor 3D</h2>
-  
-  <div class="mb-4">
-    <h3 class="font-semibold mb-2">Modelo Actual: <span id="current-model" class="text-indigo-600">Duck</span></h3>
-    <button class="px-4 py-2 rounded bg-gray-200 w-full" onclick="toggleModelSelector(true)">Cambiar Modelo</button>
-  </div>
-
-  <div class="mb-4">
-    <h3 class="font-semibold mb-2">Modo Interacción</h3>
-    <p class="text-sm text-gray-600 mb-2">Actual: <span id="lock-status" class="font-medium text-gray-900">OFF (Rotar)</span></p>
-    <button class="px-4 py-2 rounded bg-indigo-600 text-white w-full" onclick="toggleInteractionMode()">Alternar (Rotar/Mover)</button>
-  </div>
-
-  <div class="mb-6 border-t pt-4 border-gray-300">
-    <h3 class="font-bold text-lg mb-3 text-red-600">MODO AR</h3>
-    <p class="text-sm text-gray-600 mb-2">Estado: <span id="ar-mode-status" class="font-medium text-gray-900">Inactivo</span></p>
-    <button id="toggle-ar-mode-btn" class="px-4 py-2 rounded bg-red-500 text-white w-full" onclick="toggleARMode()">Activar Cámara y AR</button>
-    <button id="reubic-btn" class="mt-3 px-4 py-2 rounded bg-yellow-400 text-black w-full" onclick="startRelocate()" style="display:none;">Reubicar modelo</button>
-    <button id="reset-scale-btn" class="mt-2 px-4 py-2 rounded bg-gray-200 text-black w-full" onclick="resetScale()" style="display:none;">Reiniciar escala</button>
-  </div>
-
-  <div id="placement-controls" class="space-y-4 pt-4 border-t border-gray-300 hidden">
-    <h3 class="font-semibold text-gray-800">Ajuste Fino</h3>
-    <div>
-      <label for="ar-x-slider" class="block text-sm font-medium text-gray-700">X: <span id="ar-x-value">0.0</span></label>
-      <input type="range" id="ar-x-slider" min="-5" max="5" value="0" step="0.1" class="w-full" oninput="updateModelPlacement()">
-    </div>
-    <div>
-      <label for="ar-y-slider" class="block text-sm font-medium text-gray-700">Y: <span id="ar-y-value">0.0</span></label>
-      <input type="range" id="ar-y-slider" min="-5" max="5" value="0" step="0.1" class="w-full" oninput="updateModelPlacement()">
-    </div>
-    <div>
-      <label for="ar-z-slider" class="block text-sm font-medium text-gray-700">Rotación Z: <span id="ar-z-value">0.0</span>°</label>
-      <input type="range" id="ar-z-slider" min="-180" max="180" value="0" step="1" class="w-full" oninput="updateModelPlacement()">
-    </div>
-    <div class="pt-4 border-t border-gray-300">
-      <h4 class="font-semibold text-gray-800 mb-2">Escala</h4>
-      <div class="flex space-x-2">
-        <button class="px-4 py-2 rounded bg-gray-200 flex-1" onclick="adjustScale(-0.1)">Reducir</button>
-        <button class="px-4 py-2 rounded bg-gray-200 flex-1" onclick="adjustScale(0.1)">Aumentar</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Modal selector de modelo -->
-<div id="model-selector-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-300">
-  <div class="bg-white rounded-xl p-8 shadow-2xl w-full max-w-sm">
-    <h3 class="text-xl font-bold mb-4">Seleccionar Modelo</h3>
-    <div class="space-y-3">
-      <button class="px-4 py-2 rounded bg-gray-200 w-full" onclick="selectModel('Duck')">Duck</button>
-      <button class="px-4 py-2 rounded bg-gray-200 w-full" onclick="selectModel('Helmet')">Helmet</button>
-      <button class="px-4 py-2 rounded bg-gray-200 w-full" onclick="selectModel('BoomBox')">BoomBox</button>
-    </div>
-    <button class="mt-6 px-4 py-2 rounded bg-indigo-600 text-white w-full" onclick="toggleModelSelector(false)">Cerrar</button>
-  </div>
-</div>
-
-<!-- Alertas -->
-<div id="custom-alert" class="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-6 py-3 rounded-lg shadow-xl text-white bg-indigo-600 opacity-0 pointer-events-none transition-opacity duration-300">
-  <span id="alert-message"></span>
-</div>
+<div id="placement-dot"><div class="pulse"></div><div class="inner"></div></div>
 
 <script type="module">
-let scene, camera, renderer, controls, gltfLoader;
-let modelContainer=null, currentModel=null;
-let deviceOrientationControls, isARMode=false, isMotionTrackingActive=false;
-const videoElement=document.getElementById('video-feed');
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.128/build/three.module.js';
+import { GLTFLoader } from 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/jsm/loaders/GLTFLoader.js';
+import { DeviceOrientationControls } from 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/jsm/controls/DeviceOrientationControls.js';
+
+let scene, camera, renderer, controls, loader;
+let modelContainer = null;
+let plane, light, shadowMaterial;
+let videoElement = document.getElementById('video-feed');
+let placementDot = document.getElementById('placement-dot');
+let placedOnce = false;
+let initialWorldPos = new THREE.Vector3();
+
 const MODELS = {
-  Duck:'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/Duck/glTF/Duck.gltf',
-  Helmet:'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf',
-  BoomBox:'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/BoomBox/glTF/BoomBox.gltf'
+  Duck: 'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/Duck/glTF/Duck.gltf'
 };
-const placementDot=document.getElementById('placement-dot');
-const placementHint=document.getElementById('placement-hint');
-const reubicBtn=document.getElementById('reubic-btn');
-const resetScaleBtn=document.getElementById('reset-scale-btn');
-let lastTapTime=0, placedOnce=false;
-let pinchState={active:false,lastDist:0};
-let yawOffset=0,pitchOffset=0,rollOffset=0;
-const permissionOverlay=document.getElementById('request-permission-overlay');
-const permissionButton=document.getElementById('request-permission-btn');
 
-permissionButton.addEventListener('click', async ()=>{
-  if(typeof DeviceOrientationEvent!=='undefined' && typeof DeviceOrientationEvent.requestPermission==='function'){
-    try{ const res=await DeviceOrientationEvent.requestPermission();
-      if(res==='granted'){permissionOverlay.style.display='none'; initScene(); startAR(); } 
-    }catch(e){console.warn(e);} 
-  }else{permissionOverlay.style.display='none'; initScene(); startAR();}
-});
+initScene();
+startCamera();
 
-function showAlert(msg){const alertBox=document.getElementById('custom-alert');document.getElementById('alert-message').innerText=msg;alertBox.style.opacity=1; setTimeout(()=>{alertBox.style.opacity=0;},2500);}
-function toggleModelSelector(show){const modal=document.getElementById('model-selector-modal');if(show){modal.style.opacity=1; modal.style.pointerEvents='auto';}else{modal.style.opacity=0; modal.style.pointerEvents='none';}}
-function selectModel(name){loadModel(name);document.getElementById('current-model').innerText=name; toggleModelSelector(false);}
-function toggleInteractionMode(){ if(modelContainer){ const statusEl=document.getElementById('lock-status'); if(modelContainer.userData.locked){ modelContainer.userData.locked=false; statusEl.innerText='OFF (Rotar)';}else{ modelContainer.userData.locked=true; statusEl.innerText='ON (Mover)'; }}}
-function toggleARMode(){if(!isARMode){startAR();}else{stopAR();}}
+function initScene() {
+  scene = new THREE.Scene();
 
-function initScene(){
-  scene=new THREE.Scene();
-  camera=new THREE.PerspectiveCamera(60,window.innerWidth/window.innerHeight,0.01,100);
+  camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.01, 100);
   camera.position.set(0,1.6,3);
-  renderer=new THREE.WebGLRenderer({antialias:true, alpha:true});
-  renderer.setSize(window.innerWidth,window.innerHeight);
-  renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.outputEncoding=THREE.sRGBEncoding;
-  document.getElementById('three-container').appendChild(renderer.domElement);
 
-  gltfLoader=new THREE.GLTFLoader();
-  const light=new THREE.HemisphereLight(0xffffff,0xbbbbff,1.0);
+  renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  document.body.appendChild(renderer.domElement);
+
+  loader = new GLTFLoader();
+
+  // Luz direccional para sombras
+  light = new THREE.DirectionalLight(0xffffff, 1);
+  light.position.set(2,5,2);
+  light.castShadow = true;
+  light.shadow.mapSize.width = 1024;
+  light.shadow.mapSize.height = 1024;
+  light.shadow.camera.near = 0.5;
+  light.shadow.camera.far = 20;
   scene.add(light);
 
-  // Controls para desktop/testing
-  controls=new THREE.OrbitControls(camera, renderer.domElement);
-  controls.enableDamping=true; controls.enablePan=false; controls.maxDistance=10; controls.minDistance=1;
-  
-  // Modelo contenedor
-  modelContainer=new THREE.Object3D();
-  modelContainer.userData={locked:false,scale:1};
+  // Plano invisible para sombras
+  shadowMaterial = new THREE.ShadowMaterial({opacity:0.3});
+  plane = new THREE.Mesh(new THREE.PlaneGeometry(100,100), shadowMaterial);
+  plane.rotation.x = -Math.PI/2;
+  plane.position.y = 0;
+  plane.receiveShadow = true;
+  scene.add(plane);
+
+  // Contenedor del modelo
+  modelContainer = new THREE.Object3D();
+  modelContainer.castShadow = true;
+  modelContainer.receiveShadow = true;
   scene.add(modelContainer);
+
   loadModel('Duck');
 
-  // Eventos
-  window.addEventListener('resize',()=>{camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth,window.innerHeight);});
-  renderer.domElement.addEventListener('touchstart',onTouchStart,false);
-  renderer.domElement.addEventListener('touchmove',onTouchMove,false);
-  renderer.domElement.addEventListener('touchend',onTouchEnd,false);
+  // Controles dispositivo
+  controls = new DeviceOrientationControls(camera);
+  controls.connect();
+
+  window.addEventListener('resize', ()=> {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  // Doble tap para colocar modelo
+  renderer.domElement.addEventListener('touchend', (e)=>{
+    const currentTime = new Date().getTime();
+    if(currentTime - (window.lastTapTime || 0) < 300){
+      placeModel();
+      window.lastTapTime = 0;
+    } else { window.lastTapTime = currentTime; }
+  });
+
   animate();
 }
 
 function loadModel(name){
-  if(!gltfLoader)return;
-  if(modelContainer.children.length>0) modelContainer.remove(modelContainer.children[0]);
-  gltfLoader.load(MODELS[name], gltf=>{
-    gltf.scene.scale.set(1,1,1);
+  loader.load(MODELS[name], gltf=>{
     modelContainer.add(gltf.scene);
-    currentModel=name;
+    gltf.scene.traverse((child)=>{
+      if(child.isMesh){
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
+    modelContainer.position.set(0,0,0);
+    modelContainer.scale.set(1,1,1);
   });
-}
-
-function startAR(){
-  if(isARMode) return;
-  isARMode=true;
-  document.getElementById('ar-mode-status').innerText='Activo';
-  videoElement.style.display='block';
-  reubicBtn.style.display='inline-block';
-  resetScaleBtn.style.display='inline-block';
-  placementDot.style.display='flex';
-  placementHint.style.display='block';
-  startCamera();
-  deviceOrientationControls=new THREE.DeviceOrientationControls(camera);
-  deviceOrientationControls.connect();
-  isMotionTrackingActive=true;
-}
-
-function stopAR(){
-  isARMode=false;
-  document.getElementById('ar-mode-status').innerText='Inactivo';
-  videoElement.style.display='none';
-  placementDot.style.display='none';
-  placementHint.style.display='none';
-  isMotionTrackingActive=false;
 }
 
 async function startCamera(){
   try{
-    const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}, audio:false});
-    videoElement.srcObject=stream;
+    const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}, audio:false});
+    videoElement.srcObject = stream;
     await videoElement.play();
-  }catch(err){console.error('No se pudo activar la cámara',err);}
+    videoElement.style.display = 'block';
+  }catch(err){console.warn('No se pudo activar la cámara', err);}
 }
 
-// --- Placement y Gestos ---
-function onTouchStart(e){
-  if(e.touches.length===2){pinchState.active=true; pinchState.lastDist=getDistance(e.touches[0],e.touches[1]);}
-}
-function onTouchMove(e){
-  if(pinchState.active && e.touches.length===2){
-    const dist=getDistance(e.touches[0],e.touches[1]);
-    const diff=(dist-pinchState.lastDist)*0.01;
-    adjustScale(diff);
-    pinchState.lastDist=dist;
-  }
-}
-function onTouchEnd(e){if(e.touches.length<2){pinchState.active=false;}}
-// --- Doble tap para colocar ---
-renderer.domElement.addEventListener('touchend',(e)=>{
-  const currentTime=new Date().getTime();
-  if(currentTime-lastTapTime<300){placeModel(); lastTapTime=0;}else{lastTapTime=currentTime;}
-});
-
-function getDistance(t1,t2){return Math.hypot(t2.clientX-t1.clientX,t2.clientY-t1.clientY);}
-function placeModel(){if(!modelContainer)return; placedOnce=true; showAlert('Modelo colocado.'); placementDot.style.display='none'; placementHint.style.display='none'; document.getElementById('placement-controls').classList.remove('hidden');}
-
-function startRelocate(){if(!modelContainer) return; placedOnce=false; placementDot.style.display='flex'; placementHint.style.display='block'; document.getElementById('placement-controls').classList.add('hidden');}
-
-function resetScale(){if(!modelContainer) return; modelContainer.scale.set(1,1,1); modelContainer.userData.scale=1; showAlert('Escala reiniciada');}
-
-function adjustScale(diff){if(!modelContainer) return; modelContainer.userData.scale=Math.max(0.1, modelContainer.userData.scale+diff); modelContainer.scale.setScalar(modelContainer.userData.scale); document.getElementById('ar-x-value').innerText=modelContainer.position.x.toFixed(2);}
-function updateModelPlacement(){
-  const x=parseFloat(document.getElementById('ar-x-slider').value);
-  const y=parseFloat(document.getElementById('ar-y-slider').value);
-  const z=parseFloat(document.getElementById('ar-z-slider').value);
-  if(modelContainer){modelContainer.position.set(x,y,0); modelContainer.rotation.y=THREE.MathUtils.degToRad(z);}
-  document.getElementById('ar-x-value').innerText=x.toFixed(2);
-  document.getElementById('ar-y-value').innerText=y.toFixed(2);
-  document.getElementById('ar-z-value').innerText=z.toFixed(0);
+// --- Funciones AR ---
+function placeModel(){
+  placedOnce = true;
+  placementDot.style.display = 'none';
+  // Guardar posición inicial en mundo real
+  initialWorldPos.copy(modelContainer.position);
 }
 
-// --- Animación ---
 function animate(){
   requestAnimationFrame(animate);
-  if(deviceOrientationControls && isMotionTrackingActive) deviceOrientationControls.update();
-  renderer.render(scene,camera);
+
+  if(controls) controls.update();
+
+  if(placedOnce){
+    // Ajustar posición para que parezca fijo aunque camines
+    // Se puede implementar con cámara/world matrix
+    // Para simplificar, aquí mantenemos el offset original
+    modelContainer.position.copy(initialWorldPos);
+  }
+
+  renderer.render(scene, camera);
 }
 
 </script>
-
 </body>
 </html>
