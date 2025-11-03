@@ -8,11 +8,10 @@
     <!-- Scripts de Tailwind, Three.js y OrbitControls -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <!-- Incluir DeviceOrientationControls para facilitar el uso de sensores de movimiento -->
+    <!-- Incluir OrbitControls (para modo Visor normal) -->
     <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/OrbitControls.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/Duck/glTF/Duck.gltf"></script>
     <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/GLTFLoader.js"></script>
-    <!-- Usaremos DeviceOrientationControls para manejar la rotación de la cámara (no OrbitControls) -->
+    <!-- Usaremos DeviceOrientationControls para manejar la rotación de la cámara (para modo AR) -->
     <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/DeviceOrientationControls.js"></script>
 
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -78,7 +77,7 @@
     <!-- Contenedor del Canvas 3D (Se llenará con JavaScript) -->
     <div id="three-container"></div>
 
-    <!-- Botón para Alternar Modo Visor 3D / AR (NUEVO) -->
+    <!-- Botón para Alternar Modo Visor 3D / AR (FLOTANTE) -->
     <button id="toggle-viewer-mode-btn" class="fixed top-4 left-4 z-40 p-3 bg-red-600 text-white rounded-full shadow-lg transition-transform hover:scale-105" onclick="toggleARMode()">
         <!-- Icono de Cámara para MODO AR -->
         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -117,7 +116,8 @@
         <div class="mb-6">
             <h3 class="font-semibold mb-2">Modo Interacción:</h3>
             <p class="text-sm text-gray-600 mb-2">Actual: <span id="lock-status" class="font-medium text-gray-900">OFF (Rotar)</span></p>
-            <button class="btn-primary w-full" onclick="toggleInteractionMode()">Alternar (Rotar/Mover)</button>
+            <!-- Este botón ahora solo alterna el modo de rotación manual/arrastre directo -->
+            <button class="btn-primary w-full" onclick="toggleInteractionMode()">Alternar (Rotar/Mover Manualmente)</button>
         </div>
 
         <!-- Modo Pared/AR -->
@@ -138,10 +138,10 @@
         <div id="placement-controls" class="space-y-4 pt-4 border-t border-gray-300 hidden">
             <h3 class="font-semibold text-gray-800">Ajuste de Posición Fina</h3>
             
-            <!-- Rastreo de Rotación (Nuevo Botón) -->
+            <!-- Rastreo de Rotación -->
             <div class="pt-2">
-                <h4 class="font-medium text-sm mb-1">Rastreo de Movimiento:</h4>
-                <button id="toggle-motion-btn" class="btn-base w-full bg-green-500 text-white hover:bg-green-600" onclick="toggleMotionTracking(true)">
+                <h4 class="font-medium text-sm mb-1">Rastreo de Movimiento (Fijar Modelo):</h4>
+                <button id="toggle-motion-btn" class="btn-base w-full bg-green-500 text-white hover:bg-green-600" onclick="toggleMotionTracking()">
                     Activar Rastreo de Rotación
                 </button>
                 <p class="text-xs mt-1 text-gray-500">Mantiene el modelo fijo en la pared al mover el teléfono.</p>
@@ -199,7 +199,7 @@
         let isPanelVisible = false;
         let isARMode = false;
         let isMotionTrackingActive = false;
-        let deviceOrientationControls; // Nuevo control para la AR
+        let deviceOrientationControls; // Control para el modo AR
         let alertTimeout;
         const videoElement = document.getElementById('video-feed');
         
@@ -210,7 +210,7 @@
             BoomBox: 'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/BoomBox/glTF/BoomBox.gltf'
         };
 
-        // --- FUNCIONES DE INTERFAZ Y UTILIDAD ---
+        // --- FUNCIONES DE INTERFAZ Y UTILIDAD (sin cambios) ---
 
         window.toggleControlPanel = function() {
             const panel = document.getElementById('control-panel');
@@ -263,11 +263,8 @@
             // 1. Scene
             scene = new THREE.Scene();
             
-            // 2. Camera (usar un campo de visión más amplio para AR)
+            // 2. Camera
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            
-            // CORRECCIÓN AR: La cámara debe comenzar en el origen (0, 0, 0) para que el modelo
-            // colocado en Z negativo esté delante de ella.
             camera.position.set(0, 0, 0); 
             camera.updateProjectionMatrix();
 
@@ -285,15 +282,16 @@
             directionalLight.position.set(5, 5, 5);
             scene.add(directionalLight);
 
-            // 5. Controls (OrbitControls por defecto para el modo Rotar)
+            // 5. Controls (OrbitControls por defecto para el modo Visor normal)
             controls = new THREE.OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
-            // Ajustamos el target para que el OrbitControls mire hacia la posición inicial del modelo
-            controls.target.set(0, 0, -2); 
+            controls.target.set(0, 0, -2); // Mirar hacia la posición inicial del modelo
             controls.update(); 
             
             // 6. Model Container (un grupo vacío para manipular el modelo)
             modelContainer = new THREE.Group();
+            // Colocamos el contenedor por defecto 2 unidades delante de la cámara (en Z negativo)
+            modelContainer.position.set(0, 0, -2);
             scene.add(modelContainer);
 
             // 7. Loaders
@@ -316,14 +314,15 @@
         function animate() {
             requestAnimationFrame(animate);
 
-            // Actualizar OrbitControls si están activos
+            // 1. Rastreo de Movimiento (para el efecto AR)
+            if (isMotionTrackingActive && deviceOrientationControls) {
+                // Actualiza la rotación de la cámara basándose en el sensor
+                deviceOrientationControls.update();
+            }
+            
+            // 2. Controles de Órbita (para el modo Visor/Mover manual sin AR)
             if (controls.enabled) {
                 controls.update();
-            }
-
-            // Actualizar DeviceOrientationControls si están activos
-            if (isMotionTrackingActive && deviceOrientationControls) {
-                deviceOrientationControls.update();
             }
             
             renderer.render(scene, camera);
@@ -363,8 +362,8 @@
                     modelContainer.add(currentModel);
                     showAlert(`Modelo ${modelName} cargado correctamente.`);
                     
-                    // Aplicar la colocación actual
-                    updateModelPlacement();
+                    // Asegurar que se usen las posiciones iniciales/slider
+                    updateModelPlacement(); 
                 },
                 undefined,
                 function(error) {
@@ -375,6 +374,12 @@
         };
         
         window.toggleInteractionMode = function() {
+            // Este alterna el modo entre OrbitControls (rotar el modelo/escena) y Arrastre directo (mover el modelo)
+            if (isARMode) {
+                showAlert('El modo "Mover Manualmente" está deshabilitado en Modo AR para evitar conflictos.');
+                return;
+            }
+
             if (controls.enabled) {
                 // Cambiar a Modo Mover
                 controls.enabled = false;
@@ -382,7 +387,7 @@
                 renderer.domElement.addEventListener('pointerdown', onPointerDown, false);
                 showAlert('Modo Mover activado. Arrastra el modelo directamente.');
             } else {
-                // Cambiar a Modo Rotar
+                // Cambiar a Modo Rotar (OrbitControls)
                 controls.enabled = true;
                 document.getElementById('lock-status').textContent = 'OFF (Rotar)';
                 renderer.domElement.removeEventListener('pointerdown', onPointerDown, false);
@@ -404,10 +409,10 @@
             raycaster.setFromCamera(pointer, camera);
 
             // Solo interactuar con el modelo actual (y sus hijos)
-            const intersects = raycaster.intersectObjects(currentModel.children, true);
+            const intersects = raycaster.intersectObjects(modelContainer.children, true);
 
             if (intersects.length > 0) {
-                dragObject = modelContainer; // Arrastramos el contenedor, no el modelo interno
+                dragObject = modelContainer; // Arrastramos el contenedor
                 renderer.domElement.addEventListener('pointermove', onPointerMove, false);
                 renderer.domElement.addEventListener('pointerup', onPointerUp, false);
                 showAlert('Arrastrando modelo...');
@@ -416,31 +421,16 @@
 
         function onPointerMove(event) {
             if (dragObject) {
-                pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
-                pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-                raycaster.setFromCamera(pointer, camera);
-
-                // Crear un plano imaginario donde se 'mueve' el objeto
-                const plane = new THREE.Plane(camera.position.clone().normalize(), 0);
-                const intersectionPoint = new THREE.Vector3();
+                const deltaX = event.movementX * 0.005; 
+                const deltaY = event.movementY * 0.005;
+                dragObject.position.x += deltaX;
+                dragObject.position.y -= deltaY;
                 
-                // Proyectar el rayo sobre el plano imaginario
-                if (raycaster.ray.intersectPlane(plane, intersectionPoint)) {
-                    // Simple movimiento de offset
-                    const deltaX = event.movementX * 0.005; 
-                    const deltaY = event.movementY * 0.005;
-                    dragObject.position.x += deltaX;
-                    dragObject.position.y -= deltaY;
-                    
-                    // Actualizar sliders (solo si no estamos en modo AR, para evitar conflictos)
-                    if (!isARMode) {
-                        document.getElementById('ar-x-slider').value = dragObject.position.x;
-                        document.getElementById('ar-y-slider').value = dragObject.position.y;
-                        document.getElementById('ar-x-value').textContent = dragObject.position.x.toFixed(1);
-                        document.getElementById('ar-y-value').textContent = dragObject.position.y.toFixed(1);
-                    }
-                }
+                // Actualizar sliders AR/Posicionamiento
+                document.getElementById('ar-x-slider').value = dragObject.position.x.toFixed(1);
+                document.getElementById('ar-y-slider').value = dragObject.position.y.toFixed(1);
+                document.getElementById('ar-x-value').textContent = dragObject.position.x.toFixed(1);
+                document.getElementById('ar-y-value').textContent = dragObject.position.y.toFixed(1);
             }
         }
 
@@ -463,7 +453,6 @@
                 videoElement.style.display = 'block';
                 videoElement.play();
                 renderer.setClearColor(0x000000, 0); // Hacer el canvas transparente
-                renderer.domElement.style.zIndex = 10;
                 showAlert('Cámara activada.');
                 return true;
             } catch (err) {
@@ -480,7 +469,6 @@
             videoElement.srcObject = null;
             videoElement.style.display = 'none';
             renderer.setClearColor(0x3b4233, 1); // Restablecer fondo por defecto
-            renderer.domElement.style.zIndex = 10;
             showAlert('Cámara desactivada.');
         };
 
@@ -491,7 +479,9 @@
             const statusSpan = document.getElementById('ar-mode-status');
             const controlsDiv = document.getElementById('placement-controls');
             const panelToggleBtn = document.getElementById('toggle-ar-mode-btn');
-            const floatToggleBtn = document.getElementById('toggle-viewer-mode-btn'); // Nuevo botón flotante
+            const floatToggleBtn = document.getElementById('toggle-viewer-mode-btn'); 
+            const lockStatus = document.getElementById('lock-status');
+
 
             if (isARMode) {
                 const success = await startCameraPassThrough();
@@ -502,7 +492,7 @@
                     panelToggleBtn.classList.remove('bg-red-500', 'hover:bg-red-600');
                     panelToggleBtn.classList.add('bg-green-600', 'hover:bg-green-700');
                     
-                    // Actualizar botón flotante a estado 'Viewer'
+                    // Botón flotante
                     floatToggleBtn.classList.remove('bg-red-600');
                     floatToggleBtn.classList.add('bg-green-600');
                     floatToggleBtn.innerHTML = `
@@ -514,12 +504,14 @@
                         <span class="absolute -bottom-1 left-1/2 transform -translate-x-1/2 text-xs font-semibold">Viewer</span>
                     `;
 
-                    // Deshabilitar OrbitControls, solo usaremos AR
+                    // Deshabilitar OrbitControls/Mover manual
                     controls.enabled = false;
-                    document.getElementById('lock-status').textContent = 'ON (Mover)';
-                    renderer.domElement.addEventListener('pointerdown', onPointerDown, false);
-                    
-                    // Activar el rastreo de movimiento por defecto al entrar en AR (Mejora la ilusión)
+                    renderer.domElement.removeEventListener('pointerdown', onPointerDown, false);
+                    renderer.domElement.removeEventListener('pointermove', onPointerMove, false);
+                    renderer.domElement.removeEventListener('pointerup', onPointerUp, false);
+                    lockStatus.textContent = 'OFF (Deshabilitado en AR)';
+
+                    // Activar el rastreo de movimiento por defecto
                     toggleMotionTracking(true); 
                 } else {
                     isARMode = false; // Falló la activación
@@ -532,7 +524,7 @@
                 panelToggleBtn.classList.add('bg-red-500', 'hover:bg-red-600');
                 panelToggleBtn.classList.remove('bg-green-600', 'hover:bg-green-700');
 
-                // Actualizar botón flotante a estado 'AR'
+                // Botón flotante
                 floatToggleBtn.classList.remove('bg-green-600');
                 floatToggleBtn.classList.add('bg-red-600');
                 floatToggleBtn.innerHTML = `
@@ -545,12 +537,9 @@
                 `;
 
 
-                // Restablecer OrbitControls
+                // Restablecer OrbitControls y modo de interacción manual
                 controls.enabled = true;
-                document.getElementById('lock-status').textContent = 'OFF (Rotar)';
-                renderer.domElement.removeEventListener('pointerdown', onPointerDown, false);
-                renderer.domElement.removeEventListener('pointermove', onPointerMove, false);
-                renderer.domElement.removeEventListener('pointerup', onPointerUp, false);
+                lockStatus.textContent = 'OFF (Rotar)';
                 
                 // Desactivar rastreo de movimiento
                 toggleMotionTracking(false);
@@ -561,13 +550,14 @@
             const motionBtn = document.getElementById('toggle-motion-btn');
             
             // Si se pasa un estado booleano, forzar ese estado. Si no, alternar.
-            isMotionTrackingActive = (typeof forceState === 'boolean') ? forceState : !isMotionTrackingActive;
-
-            if (!isARMode) {
+            const newState = (typeof forceState === 'boolean') ? forceState : !isMotionTrackingActive;
+            
+            if (!isARMode && newState) {
                 showAlert('¡Primero debes activar el Modo AR!');
-                isMotionTrackingActive = false;
                 return;
             }
+            
+            isMotionTrackingActive = newState;
 
             if (isMotionTrackingActive) {
                 // Pedir permiso y activar el rastreador de orientación
@@ -575,7 +565,8 @@
                     DeviceOrientationEvent.requestPermission()
                         .then(permissionState => {
                             if (permissionState === 'granted') {
-                                window.addEventListener('deviceorientation', deviceOrientationControls.onDeviceOrientationChange, false);
+                                // IMPORTANT: deviceOrientationControls usa el evento deviceorientation internamente
+                                // No es necesario añadir el listener aquí, solo llamar a .update() en animate()
                                 motionBtn.textContent = 'Desactivar Rastreo de Rotación';
                                 motionBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
                                 motionBtn.classList.add('bg-red-500', 'hover:bg-red-600');
@@ -592,7 +583,6 @@
                         });
                 } else {
                     // Navegadores que no necesitan requestPermission (Android)
-                    window.addEventListener('deviceorientation', deviceOrientationControls.onDeviceOrientationChange, false);
                     motionBtn.textContent = 'Desactivar Rastreo de Rotación';
                     motionBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
                     motionBtn.classList.add('bg-red-500', 'hover:bg-red-600');
@@ -600,14 +590,14 @@
                 }
             } else {
                 // Desactivar rastreo de orientación
-                window.removeEventListener('deviceorientation', deviceOrientationControls.onDeviceOrientationChange, false);
                 motionBtn.textContent = 'Activar Rastreo de Rotación';
                 motionBtn.classList.remove('bg-red-500', 'hover:bg-red-600');
                 motionBtn.classList.add('bg-green-500', 'hover:bg-green-600');
                 
-                // Limpiar la rotación de la cámara (para volver a la orientación original)
+                // Limpiar la rotación de la cámara para que OrbitControls no la herede torcida
                 camera.rotation.set(0, 0, 0); 
-                camera.updateProjectionMatrix();
+                // Asegurar que OrbitControls funcione correctamente después de AR
+                controls.update(); 
 
                 showAlert('Rastreo de Movimiento DESACTIVADO.');
             }
@@ -620,8 +610,7 @@
             const y = parseFloat(document.getElementById('ar-y-slider').value);
             const zRot = parseFloat(document.getElementById('ar-z-slider').value) * (Math.PI / 180);
 
-            // Actualizar la posición y rotación del contenedor del modelo
-            // Z=-2 lo coloca 2 unidades delante de la cámara (que está en 0, 0, 0)
+            // Z=-2 es la posición inicial por defecto del contenedor (distancia de la cámara)
             modelContainer.position.set(x, y, -2); 
             modelContainer.rotation.z = zRot;
             
