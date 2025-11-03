@@ -2,508 +2,397 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mobile AR Viewer</title>
-    <!-- Load Three.js and necessary extensions -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/DeviceOrientationControls.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-    <!-- Load Tailwind CSS for simple UI styling -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Three.js WebAR App</title>
+
+    <!-- 1. CSS Styles embedded directly in the HTML -->
     <style>
-        /* General styling for full screen and hidden video */
-        body { margin: 0; overflow: hidden; font-family: 'Inter', sans-serif; }
-        #canvas-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 10; }
-        #ar-video {
-            position: fixed;
-            top: 0;
-            left: 0;
+        /* Basic Reset and Body Styles */
+        :root {
+            --background-color: rgba(255, 255, 255, 0.8);
+            --text-color: #333;
+            --shadow-color: rgba(0, 0, 0, 0.2);
+            --accent-color: #007bff;
+        }
+
+        body.dark-mode {
+            --background-color: rgba(0, 0, 0, 0.7);
+            --text-color: #eee;
+            --shadow-color: rgba(0, 0, 0, 0.5);
+            --accent-color: #4ca8ff;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
             width: 100%;
             height: 100%;
-            object-fit: cover;
-            /* Flip video feed horizontally if using the front camera, but usually fine for back */
-            /* transform: scaleX(-1); */
-            z-index: 0;
-            display: none; /* Hide the video element itself, use its feed as texture */
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
         }
-        #reticle {
+
+        /* Canvas should be in the background */
+        canvas {
+            display: block;
             position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            border: 2px solid white;
-            background-color: rgba(0, 0, 0, 0.5);
-            pointer-events: none;
-            z-index: 20;
-            opacity: 0; /* Hidden by default, shown when AR is ready */
-            transition: opacity 0.3s;
-        }
-        #ui-container {
-            position: fixed;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 30;
-            pointer-events: none; /* Allows canvas interaction unless clicking a button */
+            z-index: -1;
         }
-        .ui-button {
-            pointer-events: auto;
-            border-radius: 8px;
-            padding: 10px 16px;
-            font-size: 16px;
+
+        /* UI Overlay Container */
+        #ui-container {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            width: 90%;
+            max-width: 400px;
+        }
+
+        /* Informational Text Box */
+        #info-box {
+            background-color: var(--background-color);
+            color: var(--text-color);
+            padding: 10px 15px;
+            border-radius: 12px;
+            box-shadow: 0 4px 10px var(--shadow-color);
+            text-align: center;
+            font-size: 14px;
+            transition: background-color 0.3s, color 0.3s, box-shadow 0.3s;
+        }
+
+        #info-box.hidden {
+            display: none;
+        }
+
+        /* Dark/Light Mode Toggle Switch */
+        .theme-switch-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-color);
+            background-color: var(--background-color);
+            padding: 5px 10px;
+            border-radius: 20px;
+            box-shadow: 0 2px 5px var(--shadow-color);
+        }
+
+        .theme-switch {
+            display: inline-block;
+            height: 24px;
+            position: relative;
+            width: 44px;
+        }
+
+        .theme-switch input {
+            display: none;
+        }
+
+        .slider {
+            background-color: #ccc;
+            bottom: 0;
             cursor: pointer;
-            transition: background-color 0.2s, transform 0.1s;
+            left: 0;
+            position: absolute;
+            right: 0;
+            top: 0;
+            transition: .4s;
         }
-        .ui-button:hover { transform: translateY(-1px); }
-        .dark-mode-button {
-            background-color: rgba(30, 41, 59, 0.7); /* slate-800 */
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.2);
+
+        .slider:before {
+            background-color: #fff;
+            bottom: 3px;
+            content: "";
+            height: 18px;
+            left: 3px;
+            position: absolute;
+            transition: .4s;
+            width: 18px;
+        }
+
+        input:checked + .slider {
+            background-color: var(--accent-color);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(20px);
+        }
+
+        .slider.round {
+            border-radius: 34px;
+        }
+
+        .slider.round:before {
+            border-radius: 50%;
         }
     </style>
+
+    <!-- 2. Import Map for Three.js modules from CDN -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
 </head>
 <body>
+    <!-- The container for the Three.js scene will be created by the ARButton -->
 
-<!-- Video element to capture the camera stream -->
-<video id="ar-video" playsinline muted autoplay></video>
-
-<!-- Three.js renderer output will be placed here -->
-<div id="canvas-container"></div>
-
-<!-- Reticle for placement visualization -->
-<div id="reticle"></div>
-
-<!-- UI Container for controls and messages -->
-<div id="ui-container" class="p-4 flex flex-col justify-between items-center">
-    <div id="status-message" class="bg-gray-800/80 text-white p-3 rounded-lg shadow-lg text-sm transition-all duration-300">
-        Waiting for camera and device motion...
+    <!-- UI Overlay Elements -->
+    <div id="ui-container">
+        <div id="info-box">
+            <p>Apunta tu cámara a una superficie y toca para colocar el robot.</p>
+        </div>
+        <div class="theme-switch-wrapper">
+            <span>☀️</span>
+            <label class="theme-switch">
+                <input type="checkbox" id="theme-toggle">
+                <span class="slider round"></span>
+            </label>
+            <span>🌙</span>
+        </div>
     </div>
-    <div class="flex space-x-4 mb-4">
-        <button id="reset-button" class="ui-button dark-mode-button hidden">
-            Reset AR
-        </button>
-        <button id="mode-toggle" class="ui-button dark-mode-button">
-            Toggle Light/Dark
-        </button>
-    </div>
-</div>
 
-<script type="module">
-    // --- Firestore/Canvas Environment Setup (Mandatory) ---
-    // These variables are required but not used for this client-side AR demo.
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-ar-app';
-    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-    console.log("App ID:", appId, "Firebase Config Loaded:", !!Object.keys(firebaseConfig).length);
-    // --- END Firebase Setup ---
+    <!-- 3. JavaScript logic embedded directly in the HTML -->
+    <script type="module">
+        // Import necessary Three.js components
+        import * as THREE from 'three';
+        import { ARButton } from 'three/addons/webxr/ARButton.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-    let scene, camera, renderer, controls;
-    let video, videoTexture;
-    let isARReady = false;
-    let modelPlaced = false;
-    let model, reticle, shadowPlane;
-    let light;
-    let isDarkMode = true;
+        // Declare global variables
+        let camera, scene, renderer;
+        let controller;
+        let reticle; // The placement indicator
+        let model; // Our 3D model
+        let hitTestSource = null;
+        let hitTestSourceRequested = false;
+        let isModelPlaced = false;
 
-    // Touch Interaction State
-    let pointers = [];
-    let initialPinchDistance = 0;
-    let initialScale = 1;
-    let initialRotationY = 0;
-    let initialClientX = 0;
+        // Interaction variables
+        let touchDown = false;
+        let lastTouchX = 0;
+        let lastTouchY = 0;
+        let lastPinchDist = 0;
+        const ROTATION_SPEED = 0.01;
+        const SCALE_SPEED = 0.01;
 
-    const canvasContainer = document.getElementById('canvas-container');
-    const statusMessage = document.getElementById('status-message');
-    const reticleElement = document.getElementById('reticle');
-    const resetButton = document.getElementById('reset-button');
-    const modeToggleButton = document.getElementById('mode-toggle');
+        init();
+        animate();
 
-    // --- UTILITIES ---
+        function init() {
+            // --- Basic Scene Setup ---
+            const container = document.createElement('div');
+            document.body.appendChild(container);
 
-    // Simple message box display
-    function showMessage(text, duration = 3000) {
-        statusMessage.textContent = text;
-        statusMessage.classList.remove('opacity-0');
-        clearTimeout(statusMessage.timer);
-        if (duration > 0) {
-            statusMessage.timer = setTimeout(() => {
-                statusMessage.classList.add('opacity-0');
-            }, duration);
-        }
-    }
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
 
-    // --- SCENE SETUP ---
+            // --- Lighting ---
+            // Ambient light to softly illuminate the whole scene
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
 
-    function init() {
-        // Scene initialization
-        scene = new THREE.Scene();
-        scene.add(new THREE.AmbientLight(0xffffff, 0.5)); // General ambient light
+            // Directional light to cast shadows
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            directionalLight.position.set(2, 5, 3);
+            directionalLight.castShadow = true;
+            // Configure shadow properties for better quality
+            directionalLight.shadow.mapSize.width = 1024;
+            directionalLight.shadow.mapSize.height = 1024;
+            directionalLight.shadow.camera.near = 0.5;
+            directionalLight.shadow.camera.far = 50;
+            scene.add(directionalLight);
 
-        // Camera setup
-        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 0, 0); // Start at origin
+            // --- Renderer Setup ---
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.xr.enabled = true;
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Softer shadows
+            container.appendChild(renderer.domElement);
 
-        // Renderer setup
-        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        renderer.setPixelRatio(window.devicePixelRatio);
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.outputEncoding = THREE.sRGBEncoding;
-        renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        canvasContainer.appendChild(renderer.domElement);
+            // --- AR Button ---
+            // The ARButton creates the button to enter/exit AR mode
+            document.body.appendChild(ARButton.createButton(renderer, {
+                requiredFeatures: ['hit-test'] // We need hit-testing to place objects
+            }));
 
-        // Reticle setup (a simple white cylinder)
-        const reticleGeometry = new THREE.RingGeometry(0.015, 0.02, 32);
-        const reticleMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
-        reticle = new THREE.Mesh(reticleGeometry, reticleMaterial);
-        reticle.rotation.x = -Math.PI / 2; // Rotate to lie flat on the floor
-        reticle.visible = false;
-        scene.add(reticle);
+            // --- Placement Reticle ---
+            // A ring geometry to show where the object will be placed
+            reticle = new THREE.Mesh(
+                new THREE.RingGeometry(0.05, 0.07, 32).rotateX(-Math.PI / 2),
+                new THREE.MeshBasicMaterial()
+            );
+            reticle.matrixAutoUpdate = false;
+            reticle.visible = false;
+            scene.add(reticle);
 
-        // Lighting for shadows
-        light = new THREE.DirectionalLight(0xffffff, 1.0);
-        light.position.set(1, 5, 2); // Position the light high and slightly off-center
-        light.castShadow = true;
-        light.shadow.mapSize.width = 1024;
-        light.shadow.mapSize.height = 1024;
-        light.shadow.camera.near = 0.5;
-        light.shadow.camera.far = 50;
-        light.shadow.camera.left = -5;
-        light.shadow.camera.right = 5;
-        light.shadow.camera.top = 5;
-        light.shadow.camera.bottom = -5;
-        scene.add(light);
-
-        // The "ground" for the shadow catcher. It should be invisible.
-        const planeGeometry = new THREE.PlaneGeometry(100, 100);
-        // ShadowMaterial is necessary for invisible shadow receiving
-        const shadowMaterial = new THREE.ShadowMaterial({ opacity: 0.6 });
-        shadowPlane = new THREE.Mesh(planeGeometry, shadowMaterial);
-        shadowPlane.rotation.x = -Math.PI / 2;
-        shadowPlane.position.y = 0; // The virtual floor
-        shadowPlane.receiveShadow = true;
-        scene.add(shadowPlane);
-
-        // Start video and controls setup
-        setupVideo();
-        setupControls();
-        setupInteractions();
-        toggleDarkMode(isDarkMode); // Apply initial theme
-        window.addEventListener('resize', onWindowResize);
-    }
-
-    // --- CAMERA FEED AND TEXTURE ---
-
-    function setupVideo() {
-        video = document.getElementById('ar-video');
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            // Request back-facing camera stream
-            navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'environment' }
-            }).then(stream => {
-                video.srcObject = stream;
-                video.onloadedmetadata = () => {
-                    video.play();
-                    // Create texture from video stream
-                    videoTexture = new THREE.VideoTexture(video);
-                    videoTexture.encoding = THREE.sRGBEncoding;
-                    // Apply video texture to the scene background
-                    scene.background = videoTexture;
-                    isARReady = true;
-                    showMessage("AR Ready. Tap to place model.", 0);
-                    reticleElement.style.opacity = 1;
-                    resetButton.classList.remove('hidden');
-                };
-            }).catch(err => {
-                console.error("Camera access denied or failed:", err);
-                showMessage("Error: Camera access required for AR background.", 0);
-                // Fallback to a plain background if camera fails
-                scene.background = new THREE.Color(0x808080);
-                isARReady = true;
-                reticleElement.style.opacity = 1;
-                resetButton.classList.remove('hidden');
-            });
-        } else {
-            showMessage("Error: Your browser does not support media devices.", 0);
-            scene.background = new THREE.Color(0x808080);
-            isARReady = true;
-        }
-    }
-
-    // --- CONTROLS AND DEVICE ORIENTATION ---
-
-    function setupControls() {
-        // Request access to device motion (mandatory for iOS/modern browsers)
-        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-            DeviceOrientationEvent.requestPermission()
-                .then(permissionState => {
-                    if (permissionState === 'granted') {
-                        initDeviceControls();
-                    } else {
-                        showMessage("Device Motion Permission Denied. Rotation is disabled.", 5000);
-                        initDeviceControls(false);
+            // --- Load the 3D Model ---
+            const loader = new GLTFLoader();
+            // Using a free model from the official Three.js repository
+            loader.load('https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb', (gltf) => {
+                model = gltf.scene;
+                // Traverse the model to enable shadow casting on all meshes
+                model.traverse((child) => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
                     }
-                })
-                .catch(error => {
-                    console.error("Permission request failed:", error);
-                    initDeviceControls(false);
                 });
-        } else {
-            // For older Android/other devices where permission is not needed
-            initDeviceControls();
-        }
-    }
+                model.scale.set(0.2, 0.2, 0.2); // Initial scale
+                // The model is loaded but not added to the scene yet
+                console.log("Model loaded successfully.");
+            }, undefined, (error) => {
+                console.error("An error occurred while loading the model:", error);
+            });
 
-    function initDeviceControls(enabled = true) {
-        controls = new THREE.DeviceOrientationControls(camera);
-        if (enabled) {
-            controls.connect();
-        } else {
-            // If controls are disabled, still set up the default view
-            camera.position.z = 1;
-        }
-    }
+            // --- AR Controller (for tap interaction) ---
+            controller = renderer.xr.getController(0);
+            controller.addEventListener('select', onSelect);
+            scene.add(controller);
 
+            // --- Mobile Touch Interactions ---
+            addInteractionListeners();
 
-    // --- 3D MODEL LOGIC (Placeholder Cube) ---
-
-    function loadModel() {
-        // --- GLTF Loading Structure (Commented out for runnable stability) ---
-        // const loader = new THREE.GLTFLoader();
-        // loader.load(
-        //     'path/to/your/model.glb', // Change this to your model URL
-        //     function (gltf) {
-        //         model = gltf.scene;
-        //         model.traverse(function(node) {
-        //             if (node.isMesh) {
-        //                 node.castShadow = true;
-        //                 node.receiveShadow = false;
-        //             }
-        //         });
-        //         // Center the model's pivot point
-        //         const box = new THREE.Box3().setFromObject(model);
-        //         const center = box.getCenter(new THREE.Vector3());
-        //         model.position.sub(center);
-        //
-        //         scene.add(model);
-        //     },
-        //     undefined,
-        //     function (error) {
-        //         console.error('An error happened loading GLTF:', error);
-        //         // Fallback to simple geometry
-        //         createFallbackModel();
-        //     }
-        // );
-
-        // --- Fallback Simple Model (Box) for guaranteed runnability ---
-        createFallbackModel();
-    }
-
-    function createFallbackModel() {
-         const geometry = new THREE.BoxGeometry(0.2, 0.2, 0.2);
-         const material = new THREE.MeshPhongMaterial({ color: 0x4a90e2 });
-         model = new THREE.Mesh(geometry, material);
-         model.castShadow = true;
-         model.receiveShadow = false;
-         // Note: model is added to the scene later upon placement
-    }
-
-    function placeModel() {
-        if (!isARReady || modelPlaced) return;
-
-        // 1. Load the model if not loaded
-        if (!model) {
-            loadModel();
+            // --- UI and Responsiveness ---
+            window.addEventListener('resize', onWindowResize, false);
+            document.getElementById('theme-toggle').addEventListener('change', (e) => {
+                document.body.classList.toggle('dark-mode', e.target.checked);
+            });
         }
 
-        // 2. Find the placement point using raycasting
-        const raycaster = new THREE.Raycaster();
-        // Raycast from the center of the screen
-        raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+        // Function called when the user taps the screen in AR mode
+        function onSelect() {
+            if (reticle.visible && model && !isModelPlaced) {
+                // Clone the model to allow placing multiple instances if desired (though we lock it here)
+                const newModel = model.clone();
+                newModel.position.setFromMatrixPosition(reticle.matrix);
+                scene.add(newModel);
 
-        // Check intersection with the large, invisible shadow plane
-        const intersects = raycaster.intersectObject(shadowPlane);
+                // Add the invisible shadow plane underneath the model
+                const shadowPlane = new THREE.Mesh(
+                    new THREE.PlaneGeometry(1.5, 1.5),
+                    new THREE.ShadowMaterial({ opacity: 0.4 })
+                );
+                shadowPlane.rotation.x = -Math.PI / 2;
+                shadowPlane.position.copy(newModel.position);
+                shadowPlane.position.y -= 0.01; // Slightly below the model to avoid z-fighting
+                shadowPlane.receiveShadow = true;
+                scene.add(shadowPlane);
 
-        if (intersects.length > 0) {
-            const intersectionPoint = intersects[0].point;
+                // Link model and its shadow plane for transformations
+                newModel.userData.shadowPlane = shadowPlane;
+                model = newModel; // The placed model is now the active model
 
-            // 3. Position the model and place it in the scene
-            model.position.copy(intersectionPoint);
-            model.scale.set(1, 1, 1);
-            model.rotation.y = camera.rotation.y; // Initial rotation matches camera heading
-            
-            // Adjust the model position vertically to sit on the floor
-            // This needs to account for the model's bounding box height
-            const box = new THREE.Box3().setFromObject(model);
-            const size = box.getSize(new THREE.Vector3());
-            model.position.y += size.y / 2; // Move half the height up
+                isModelPlaced = true;
+                reticle.visible = false; // Hide the reticle after placement
 
-            scene.add(model);
-            modelPlaced = true;
-
-            // 4. Reposition the light source (optional but helps realism)
-            light.position.set(model.position.x + 1, 5, model.position.z + 2);
-
-            // 5. Update UI
-            reticleElement.style.opacity = 0;
-            showMessage("Model placed! Drag to rotate, pinch to scale.", 0);
-        } else {
-            showMessage("Could not find a surface to place the model. Try looking at the floor or an open area.", 3000);
-        }
-    }
-
-    // --- INTERACTION HANDLERS (Touch) ---
-
-    function setupInteractions() {
-        window.addEventListener('touchstart', onTouchStart, false);
-        window.addEventListener('touchmove', onTouchMove, false);
-        window.addEventListener('touchend', onTouchEnd, false);
-
-        // Tap to place
-        window.addEventListener('click', () => {
-             // Only tap on the canvas should place
-            if (!modelPlaced && isARReady) {
-                placeModel();
-            }
-        });
-
-        resetButton.addEventListener('click', resetAR);
-        modeToggleButton.addEventListener('click', () => toggleDarkMode(!isDarkMode));
-    }
-
-    function onTouchStart(event) {
-        pointers = event.touches;
-
-        if (modelPlaced) {
-            if (pointers.length === 2) {
-                // Start Pinch to Scale
-                initialPinchDistance = getPinchDistance();
-                initialScale = model.scale.x;
-            } else if (pointers.length === 1) {
-                // Start Drag to Rotate
-                initialClientX = pointers[0].clientX;
-                initialRotationY = model.rotation.y;
+                // Hide the placement instructions
+                document.getElementById('info-box').classList.add('hidden');
             }
         }
-    }
 
-    function onTouchMove(event) {
-        if (!modelPlaced) return;
+        // Sets up listeners for pinch-to-scale and drag-to-rotate
+        function addInteractionListeners() {
+            const canvas = renderer.domElement;
+            canvas.addEventListener('touchstart', (event) => {
+                if (!isModelPlaced) return;
+                touchDown = true;
+                
+                if (event.touches.length === 1) { // Drag to rotate
+                    lastTouchX = event.touches[0].clientX;
+                } else if (event.touches.length === 2) { // Pinch to scale
+                    const dx = event.touches[0].clientX - event.touches[1].clientX;
+                    const dy = event.touches[0].clientY - event.touches[1].clientY;
+                    lastPinchDist = Math.sqrt(dx * dx + dy * dy);
+                }
+            });
 
-        if (pointers.length === 2 && event.touches.length === 2) {
-            // Pinch to Scale
-            const currentDistance = getPinchDistance(event.touches);
-            const scaleFactor = currentDistance / initialPinchDistance;
-            const newScale = Math.max(0.1, Math.min(3, initialScale * scaleFactor)); // Clamp scale
-            model.scale.set(newScale, newScale, newScale);
-            model.position.y = (new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3()).y / 2); // Keep base on floor
-        } else if (pointers.length === 1 && event.touches.length === 1) {
-            // Drag to Rotate
-            const deltaX = event.touches[0].clientX - initialClientX;
-            // Rotation sensitivity (higher number = less sensitive)
-            const rotationSpeed = 0.01;
-            model.rotation.y = initialRotationY + (deltaX * rotationSpeed);
+            canvas.addEventListener('touchmove', (event) => {
+                if (!isModelPlaced || !touchDown) return;
+                
+                if (event.touches.length === 1) { // Rotation
+                    const currentX = event.touches[0].clientX;
+                    const deltaX = currentX - lastTouchX;
+                    model.rotation.y += deltaX * ROTATION_SPEED;
+                    lastTouchX = currentX;
+                } else if (event.touches.length === 2) { // Scaling
+                    const dx = event.touches[0].clientX - event.touches[1].clientX;
+                    const dy = event.touches[0].clientY - event.touches[1].clientY;
+                    const currentPinchDist = Math.sqrt(dx * dx + dy * dy);
+                    const deltaDist = currentPinchDist - lastPinchDist;
+
+                    const newScale = model.scale.x + deltaDist * SCALE_SPEED;
+                    if (newScale > 0.05 && newScale < 1.0) { // Clamp scale
+                        model.scale.set(newScale, newScale, newScale);
+                    }
+                    lastPinchDist = currentPinchDist;
+                }
+            });
+
+            canvas.addEventListener('touchend', () => {
+                touchDown = false;
+            });
         }
-    }
 
-    function onTouchEnd(event) {
-        pointers = event.touches;
-    }
 
-    function getPinchDistance(touches = pointers) {
-        const dx = touches[0].clientX - touches[1].clientX;
-        const dy = touches[0].clientY - touches[1].clientY;
-        return Math.sqrt(dx * dx + dy * dy);
-    }
-
-    // --- WINDOW & UI HANDLERS ---
-
-    function onWindowResize() {
-        camera.aspect = window.innerWidth / window.innerHeight;
-        camera.updateProjectionMatrix();
-        renderer.setSize(window.innerWidth, window.innerHeight);
-    }
-
-    function resetAR() {
-        if (model) {
-            scene.remove(model);
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
         }
-        modelPlaced = false;
-        model = null; // Forces model reload/creation on next placement
-        reticleElement.style.opacity = 1;
-        showMessage("Model reset. Tap to place again.", 0);
-    }
 
-    function toggleDarkMode(isDark) {
-        isDarkMode = isDark;
-        if (isDarkMode) {
-            // Dark Mode UI
-            document.body.classList.remove('bg-white');
-            document.body.classList.add('bg-gray-900');
-            modeToggleButton.textContent = 'Toggle Light Mode';
-            statusMessage.classList.remove('bg-gray-200', 'text-gray-900');
-            statusMessage.classList.add('bg-gray-800/80', 'text-white');
-            resetButton.classList.add('dark-mode-button');
-            modeToggleButton.classList.add('dark-mode-button');
-        } else {
-            // Light Mode UI
-            document.body.classList.remove('bg-gray-900');
-            document.body.classList.add('bg-white');
-            modeToggleButton.textContent = 'Toggle Dark Mode';
-            statusMessage.classList.remove('bg-gray-800/80', 'text-white');
-            statusMessage.classList.add('bg-gray-200/80', 'text-gray-900');
-            resetButton.classList.remove('dark-mode-button');
-            modeToggleButton.classList.remove('dark-mode-button');
+        function animate() {
+            renderer.setAnimationLoop(render);
         }
-    }
 
+        // The main render loop, called every frame
+        function render(timestamp, frame) {
+            if (frame) {
+                const referenceSpace = renderer.xr.getReferenceSpace();
+                const session = renderer.xr.getSession();
 
-    // --- ANIMATION LOOP ---
+                // Handle placement reticle visibility and position
+                if (!isModelPlaced) {
+                    // Request hit test source once
+                    if (hitTestSourceRequested === false) {
+                        session.requestReferenceSpace('viewer').then((referenceSpace) => {
+                            session.requestHitTestSource({ space: referenceSpace }).then((source) => {
+                                hitTestSource = source;
+                            });
+                        });
+                        session.addEventListener('end', () => {
+                            hitTestSourceRequested = false;
+                            hitTestSource = null;
+                        });
+                        hitTestSourceRequested = true;
+                    }
 
-    function animate() {
-        requestAnimationFrame(animate);
-
-        if (isARReady) {
-            // Update device controls (handles camera rotation based on phone movement)
-            controls.update();
-
-            // Only show reticle if the model hasn't been placed
-            if (!modelPlaced) {
-                // Raycast to find the ground for reticle placement
-                const raycaster = new THREE.Raycaster();
-                raycaster.setFromCamera({ x: 0, y: 0 }, camera); // Center of screen
-                const intersects = raycaster.intersectObject(shadowPlane);
-
-                if (intersects.length > 0) {
-                    const intersectionPoint = intersects[0].point;
-                    // Move the 3D reticle in the scene
-                    reticle.position.copy(intersectionPoint);
-                    // Move the light to track the reticle for better placement visualization
-                    light.position.set(intersectionPoint.x + 1, 5, intersectionPoint.z + 2);
-                    reticle.visible = true;
-                } else {
-                    reticle.visible = false;
+                    // Perform hit test
+                    if (hitTestSource) {
+                        const hitTestResults = frame.getHitTestResults(hitTestSource);
+                        if (hitTestResults.length > 0) {
+                            const hit = hitTestResults[0];
+                            reticle.visible = true;
+                            reticle.matrix.fromArray(hit.getPose(referenceSpace).transform.matrix);
+                        } else {
+                            reticle.visible = false;
+                        }
+                    }
                 }
             }
+
+            renderer.render(scene, camera);
         }
-
-        // Update video texture if it's playing
-        if (video.readyState >= video.HAVE_ENOUGH_DATA && videoTexture) {
-            videoTexture.needsUpdate = true;
-        }
-
-        renderer.render(scene, camera);
-    }
-
-    // Start the application
-    init();
-    animate();
-
-</script>
+    </script>
 </body>
 </html>
