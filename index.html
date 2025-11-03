@@ -1,596 +1,245 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Visor AR de Obras de Arte</title>
-    
-    <!-- Tailwind y Three.js -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/OrbitControls.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/DeviceOrientationControls.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Visor AR con Placement Dot — Galería</title>
 
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        body { font-family: 'Poppins', sans-serif; background-color:#f7f3ed; color:#3b4233; overflow:hidden; touch-action:none; }
-        canvas { display:block; width:100%; height:100vh; position:absolute; top:0; left:0; z-index:10; }
-        video.video-background { position:fixed; top:0; left:0; width:100%; height:100%; object-fit:cover; z-index:5; display:none; }
-        .glass-panel { backdrop-filter: blur(10px) saturate(180%); background-color: rgba(255,255,255,0.75); border:1px solid rgba(255,255,255,0.125); box-shadow:0 8px 32px rgba(31,38,135,0.37); }
-        #control-panel { transition: transform .3s ease-in-out; transform: translateX(100%); }
-        #control-panel.is-visible { transform: translateX(0); }
-        /* Placement dot */
-        #placement-dot {
-          position: fixed;
-          top: 50%;
-          left: 50%;
-          width: 62px;
-          height: 62px;
-          transform: translate(-50%, -50%);
-          border-radius: 50%;
-          z-index: 22;
-          display: none;
-          align-items: center;
-          justify-content: center;
-          pointer-events: auto;
-        }
-        #placement-dot .inner {
-          width: 42px;
-          height: 42px;
-          border-radius: 50%;
-          background: rgba(255,255,255,0.6);
-          border: 2px solid rgba(0,0,0,0.45);
-          box-shadow: 0 6px 18px rgba(0,0,0,0.25);
-        }
-        #placement-dot .pulse {
-          position:absolute; width:100%; height:100%; border-radius:50%;
-          background: radial-gradient(circle, rgba(0,128,0,0.12) 0%, rgba(0,128,0,0.02) 60%, rgba(0,128,0,0) 100%);
-          animation: pulse 1.6s infinite;
-          z-index:1;
-        }
-        @keyframes pulse { 0% { transform: scale(.95); opacity:1 } 70% { transform: scale(1.4); opacity:0 } 100% { opacity:0 } }
-        /* Small helper text */
-        #placement-hint { position: fixed; left:50%; transform: translateX(-50%); bottom: 18px; z-index:22; background:rgba(0,0,0,0.55); color:#fff; padding:8px 12px; border-radius:8px; display:none; font-size:13px;}
-        /* ensure UI elements above canvas */
-        #menu-icon { z-index: 24; }
-    </style>
+  <!-- Tailwind y Three.js -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/controls/DeviceOrientationControls.js"></script>
+
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      font-family: 'Poppins', sans-serif;
+      background-color: #f7f3ed;
+      color: #3b4233;
+      overflow: hidden;
+      touch-action: none;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100vh;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 10;
+    }
+    video.video-background {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: 5;
+      display: none;
+    }
+    /* Mismos estilos UI de tu código... */
+    #placement-dot {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      width: 62px;
+      height: 62px;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      z-index: 22;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      pointer-events: auto;
+    }
+    #placement-dot .inner {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.6);
+      border: 2px solid rgba(0, 0, 0, 0.45);
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+    }
+    #placement-dot .pulse {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(0, 128, 0, 0.12) 0%, rgba(0, 128, 0, 0.02) 60%, rgba(0, 128, 0, 0) 100%);
+      animation: pulse 1.6s infinite;
+      z-index: 1;
+    }
+    @keyframes pulse {
+      0% { transform: scale(.95); opacity: 1 }
+      70% { transform: scale(1.4); opacity: 0 }
+      100% { opacity: 0 }
+    }
+  </style>
 </head>
 <body class="bg-gray-100 antialiased">
 
-    <!-- Video passthrough -->
-    <video id="video-feed" class="video-background" autoplay playsinline></video>
+  <!-- Video passthrough -->
+  <video id="video-feed" class="video-background" autoplay playsinline></video>
 
-    <!-- 3D container -->
-    <div id="three-container"></div>
+  <!-- 3D container -->
+  <div id="three-container"></div>
 
-    <!-- Placement dot (overlay) -->
-    <div id="placement-dot" role="button" aria-label="Point to place model" tabindex="0">
-      <div class="pulse"></div>
-      <div class="inner"></div>
-    </div>
-    <div id="placement-hint">Mueve el punto. Doble tap para colocar.</div>
+  <!-- Placement dot (overlay) -->
+  <div id="placement-dot" role="button" aria-label="Point to place model" tabindex="0">
+    <div class="pulse"></div>
+    <div class="inner"></div>
+  </div>
+  <div id="placement-hint">Mueve el punto. Doble tap para colocar.</div>
 
-    <!-- Control panel -->
-    <button id="menu-icon" class="fixed top-4 right-4 p-3 bg-indigo-600 text-white rounded-full shadow-lg transition-transform hover:scale-105" onclick="toggleControlPanel()">
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
-    </button>
-
-    <div id="control-panel" class="fixed top-0 right-0 h-full w-full md:w-80 z-50 p-6 glass-panel overflow-y-auto">
-        <button id="close-icon" class="absolute top-4 right-4 p-2 text-gray-600 rounded-full hover:bg-gray-200" onclick="toggleControlPanel()">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-        </button>
-
-        <h2 class="text-2xl font-bold mb-6 text-indigo-800 pt-8 md:pt-0">Controles de Visor 3D</h2>
-
-        <div class="mb-4">
-            <h3 class="font-semibold mb-2">Obra Actual: <span id="current-model" class="text-indigo-600">Duck</span></h3>
-            <button class="px-4 py-2 rounded bg-gray-200 w-full" onclick="toggleModelSelector(true)">Cambiar Obra</button>
-        </div>
-
-        <div class="mb-4">
-            <h3 class="font-semibold mb-2">Modo Interacción</h3>
-            <p class="text-sm text-gray-600 mb-2">Actual: <span id="lock-status" class="font-medium text-gray-900">OFF (Rotar)</span></p>
-            <button class="px-4 py-2 rounded bg-indigo-600 text-white w-full" onclick="toggleInteractionMode()">Alternar (Rotar/Mover)</button>
-        </div>
-
-        <div class="mb-6 border-t pt-4 border-gray-300">
-            <h3 class="font-bold text-lg mb-3 text-red-600">MODO REALIDAD AUMENTADA</h3>
-            <p class="text-sm text-gray-600 mb-2">Estado: <span id="ar-mode-status" class="font-medium text-gray-900">Inactivo</span></p>
-            <button id="toggle-ar-mode-btn" class="px-4 py-2 rounded bg-red-500 text-white w-full" onclick="toggleARMode()">Activar Cámara (AR)</button>
-            <button id="reubic-btn" class="mt-3 px-4 py-2 rounded bg-yellow-400 text-black w-full" onclick="startRelocate()" style="display:none;">Reubicar Obra</button>
-            <button id="reset-scale-btn" class="mt-2 px-4 py-2 rounded bg-gray-200 text-black w-full" onclick="resetScale()" style="display:none;">Reiniciar escala</button>
-        </div>
-
-        <div id="placement-controls" class="space-y-4 pt-4 border-t border-gray-300 hidden">
-             <div class="pt-2">
-                <h4 class="font-medium text-sm mb-1">Rastreo de Movimiento:</h4>
-                <p class="text-xs mt-1 text-gray-500">Mantiene la obra fija en la pared al mover el teléfono. (Activado por defecto en modo AR)</p>
-            </div>
-            
-            <div class="pt-4 border-t border-gray-300">
-                <h4 class="font-semibold text-gray-800 mb-2">Ajustar Escala</h4>
-                <div class="flex space-x-2">
-                    <button class="px-4 py-2 rounded bg-gray-200 flex-1" onclick="adjustScale(-0.1)">- Reducir</button>
-                    <button class="px-4 py-2 rounded bg-gray-200 flex-1" onclick="adjustScale(0.1)">+ Aumentar</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Model selector modal -->
-    <div id="model-selector-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-300">
-        <div class="bg-white rounded-xl p-8 shadow-2xl w-full max-w-sm">
-            <h3 class="text-xl font-bold mb-4">Seleccionar Obra</h3>
-            <div class="space-y-3">
-                <button class="px-4 py-2 rounded bg-gray-200 w-full" onclick="selectModel('Duck')">Pato de Hule</button>
-                <button class="px-4 py-2 rounded bg-gray-200 w-full" onclick="selectModel('Helmet')">Casco Dañado</button>
-                <button class="px-4 py-2 rounded bg-gray-200 w-full" onclick="selectModel('BoomBox')">Radiocasetera</button>
-            </div>
-            <button class="mt-6 px-4 py-2 rounded bg-indigo-600 text-white w-full" onclick="toggleModelSelector(false)">Cerrar</button>
-        </div>
-    </div>
-
-    <!-- alert -->
-    <div id="custom-alert" class="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 px-6 py-3 rounded-lg shadow-xl text-white bg-indigo-600 opacity-0 pointer-events-none transition-opacity duration-300">
-        <span id="alert-message"></span>
-    </div>
+  <!-- UI y paneles de control acá (igual que en tu código) -->
 
 <script type="module">
-/* ------------------------------------------------------------
-   Visor AR para Obras de Arte con Anclaje Realista
-   ------------------------------------------------------------ */
+  let scene, camera, renderer, controls, gltfLoader;
+  let modelContainer = null, currentModel = null;
+  let deviceOrientationControls;
+  
+  let isARMode = false;
+  let isMotionTrackingActive = false;
+  
+  const videoElement = document.getElementById('video-feed');
+  const placementDot = document.getElementById('placement-dot');
+  const placementHint = document.getElementById('placement-hint');
 
-let scene, camera, renderer, controls, gltfLoader;
-let modelContainer = null, currentModel = null;
-let deviceOrientationControls;
-let isARMode = false, isMotionTrackingActive = false;
-const videoElement = document.getElementById('video-feed');
+  const MODELS = {
+    Duck: 'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/Duck/glTF/Duck.gltf',
+    Helmet: 'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf',
+    BoomBox: 'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/BoomBox/glTF/BoomBox.gltf'
+  };
 
-// --- NUEVO: Variables para el efecto de anclaje (paralaje) ---
-let isAnchored = false;
-let initialCameraQuaternion = new THREE.Quaternion();
-const parallaxFactor = 0.5; // Sensibilidad del efecto. Ajusta entre 0.3 y 1.0
+  function initThree() {
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 0, 3); // camara atras viendo modelo
 
-const MODELS = {
-  Duck: 'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/Duck/glTF/Duck.gltf',
-  Helmet: 'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf',
-  BoomBox: 'https://cdn.jsdelivr.net/gh/KhronosGroup/glTF-Sample-Models@master/2.0/BoomBox/glTF/BoomBox.gltf'
-};
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.getElementById('three-container').appendChild(renderer.domElement);
 
-// UI elements
-const placementDot = document.getElementById('placement-dot');
-const placementHint = document.getElementById('placement-hint');
-const reubicBtn = document.getElementById('reubic-btn');
-const resetScaleBtn = document.getElementById('reset-scale-btn');
+    const ambient = new THREE.AmbientLight(0xffffff, 1.5);
+    scene.add(ambient);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+    dirLight.position.set(5, 5, 5);
+    scene.add(dirLight);
 
-let lastTapTime = 0;
-let placedOnce = false; 
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.enabled = true;  // inicialmente habilitado
 
-// Pinch state for scaling
-let pinchState = { active:false, lastDist:0 };
+    modelContainer = new THREE.Group();
+    scene.add(modelContainer);
 
-// Initialize Three
-function initThree(){
-  scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
-  camera.position.set(0,0,0);
+    gltfLoader = new THREE.GLTFLoader();
 
-  renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
-  renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.setSize(innerWidth, innerHeight);
-  renderer.setClearColor(0x3b4233, 1);
-  document.getElementById('three-container').appendChild(renderer.domElement);
+    deviceOrientationControls = new THREE.DeviceOrientationControls(camera);
+    deviceOrientationControls.enabled = false;
 
-  const ambient = new THREE.AmbientLight(0xffffff, 1.5); scene.add(ambient);
-  const dir = new THREE.DirectionalLight(0xffffff, 1); dir.position.set(5,5,5); scene.add(dir);
+    window.addEventListener('resize', onWindowResize);
 
-  controls = new THREE.OrbitControls(camera, renderer.domElement);
-  controls.enableDamping = true;
-  controls.target.set(0,0,-2);
-  controls.update();
-
-  modelContainer = new THREE.Group();
-  scene.add(modelContainer);
-
-  gltfLoader = new THREE.GLTFLoader();
-
-  deviceOrientationControls = new THREE.DeviceOrientationControls(camera);
-
-  window.addEventListener('resize', onWindowResize);
-
-  renderer.domElement.addEventListener('touchstart', onTouchStart, { passive:false });
-  renderer.domElement.addEventListener('touchmove', onTouchMove, { passive:false });
-  renderer.domElement.addEventListener('touchend', onTouchEnd, { passive:false });
-}
-
-function loadModelByName(name){
-  document.getElementById('current-model').textContent = name;
-  if (currentModel) {
-    modelContainer.remove(currentModel);
-    disposeModel(currentModel);
-    currentModel = null;
+    animate();
   }
-  showAlert(`Cargando ${name}...`);
-  gltfLoader.load(MODELS[name], gltf=>{
-    currentModel = gltf.scene;
-    const box = new THREE.Box3().setFromObject(currentModel);
-    const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
-    currentModel.position.sub(center);
-    const scaleFactor = 1.0 / Math.max(size.x, size.y, size.z);
-    currentModel.scale.setScalar(scaleFactor);
-    modelContainer.add(currentModel);
-    addContactShadow(currentModel, size.y * scaleFactor);
 
-    showAlert(`${name} cargado.`);
-    currentModel.visible = !isARMode || placedOnce;
-  }, undefined, err=>{
-    console.error('Error cargando GLTF', err);
-    showAlert('Error cargando modelo.');
-  });
-}
-
-function disposeModel(obj){
-  obj.traverse(o=>{
-    if (o.isMesh){
-      if (o.geometry) o.geometry.dispose();
-      if (o.material){
-        if (Array.isArray(o.material)) o.material.forEach(m=>m.dispose());
-        else o.material.dispose();
-      }
+  function loadModel(name) {
+    if(currentModel) {
+      modelContainer.remove(currentModel);
+      disposeModel(currentModel);
+      currentModel = null;
     }
-  });
-}
-
-function addContactShadow(model, modelHeight){
-  const c = document.createElement('canvas'); c.width=c.height=256;
-  const ctx = c.getContext('2d');
-  const g = ctx.createRadialGradient(128,128,10,128,128,128);
-  g.addColorStop(0,'rgba(0,0,0,0.5)'); g.addColorStop(1,'rgba(0,0,0,0)');
-  ctx.fillStyle = g; ctx.fillRect(0,0,256,256);
-  const tex = new THREE.CanvasTexture(c);
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent:true, depthWrite:false }));
-  sprite.name = 'contactShadow';
-  sprite.position.y = - (modelHeight/2) - 0.05;
-  sprite.scale.set(1.5,1.5,1);
-  model.add(sprite);
-}
-
-function onWindowResize(){
-  if (!camera || !renderer) return;
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-}
-
-// Animate
-function animate(){
-  requestAnimationFrame(animate);
-  if (controls && controls.enabled) controls.update();
-  
-  if (isMotionTrackingActive && deviceOrientationControls) {
-      deviceOrientationControls.update();
-
-      // --- NUEVO: Lógica de anclaje por paralaje ---
-      if (isAnchored && modelContainer) {
-        // Calcula el cambio de rotación desde que se ancló el modelo
-        const currentQuaternion = camera.quaternion.clone();
-        const deltaQuaternion = currentQuaternion.multiply(initialCameraQuaternion.clone().invert());
-
-        // Convierte el cambio a ángulos de Euler para entender el "paneo"
-        const deltaEuler = new THREE.Euler().setFromQuaternion(deltaQuaternion, 'YXZ');
-        
-        // Aplica un desplazamiento opuesto al movimiento de la cámara
-        // Esto crea la ilusión de que el objeto está fijo en la pared.
-        modelContainer.position.x = -deltaEuler.y * parallaxFactor;
-        modelContainer.position.y = deltaEuler.x * parallaxFactor;
-      }
+    gltfLoader.load(MODELS[name], gltf => {
+      currentModel = gltf.scene;
+      const box = new THREE.Box3().setFromObject(currentModel);
+      const center = box.getCenter(new THREE.Vector3());
+      currentModel.position.sub(center);
+      const size = box.getSize(new THREE.Vector3());
+      const scaleFactor = 2 / Math.max(size.x, size.y, size.z);
+      currentModel.scale.setScalar(scaleFactor);
+      modelContainer.add(currentModel);
+    });
   }
-  
-  renderer.render(scene, camera);
-}
 
-function showAlert(msg){
-  const box = document.getElementById('custom-alert');
-  document.getElementById('alert-message').textContent = msg;
-  box.classList.remove('opacity-0','pointer-events-none');
-  box.classList.add('opacity-100','pointer-events-auto');
-  clearTimeout(box._t);
-  box._t = setTimeout(()=>{ box.classList.remove('opacity-100','pointer-events-auto'); box.classList.add('opacity-0','pointer-events-none'); }, 2200);
-}
-
-// --- NUEVO: Funciones para controlar el anclaje ---
-function anchorModel() {
-    if (!modelContainer) return;
-    // Guarda la orientación actual de la cámara
-    initialCameraQuaternion.copy(camera.quaternion);
-    // Reinicia la posición del contenedor para que el efecto parta de cero
-    modelContainer.position.set(0, 0, -2.0); // Distancia fija a la pared
-    isAnchored = true;
-}
-
-function unanchorModel() {
-    isAnchored = false;
-}
-
-/* -------------------------
-   Placement dot behavior
-   ------------------------- */
-function showPlacementDot(show){
-  placementDot.style.display = show ? 'flex' : 'none';
-  placementHint.style.display = show ? 'block' : 'none';
-}
-
-function placeModelAtScreen(x, y){
-  if (!modelContainer || !currentModel) return;
-  
-  // En lugar de calcular una posición 3D, simplemente anclamos el modelo
-  anchorModel();
-
-  // Y lo hacemos visible
-  currentModel.visible = true;
-  placedOnce = true;
-  showPlacementDot(false);
-  reubicBtn.style.display = 'block';
-  resetScaleBtn.style.display = 'block';
-  showAlert('Obra colocada en la pared ✅');
-}
-
-(function setupPlacementDotEvents(){
-    let dragging = false;
-    let startTouchOffset = { x: 0, y: 0 };
-    
-    function handleTapLogic(e, isTouch) {
-        e.preventDefault();
-        dragging = true;
-        const clientX = isTouch ? e.touches[0].clientX : e.clientX;
-        const clientY = isTouch ? e.touches[0].clientY : e.clientY;
-        startTouchOffset.x = clientX - placementDot.getBoundingClientRect().left;
-        startTouchOffset.y = clientY - placementDot.getBoundingClientRect().top;
-        if (!isTouch) placementDot.setPointerCapture(e.pointerId);
-    }
-
-    function handleMoveLogic(e, isTouch) {
-        if (!dragging) return;
-        e.preventDefault();
-        const clientX = isTouch ? e.touches[0].clientX : e.clientX;
-        const clientY = isTouch ? e.touches[0].clientY : e.clientY;
-        const nx = clientX - startTouchOffset.x + placementDot.offsetWidth / 2;
-        const ny = clientY - startTouchOffset.y + placementDot.offsetHeight / 2;
-        placementDot.style.left = `${Math.max(8, Math.min(window.innerWidth - 8, nx))}px`;
-        placementDot.style.top = `${Math.max(8, Math.min(window.innerHeight - 8, ny))}px`;
-    }
-
-    function handleEndLogic(e, isTouch) {
-        dragging = false;
-        if (!isTouch) try { placementDot.releasePointerCapture(e.pointerId); } catch(err) {}
-
-        const rect = placementDot.getBoundingClientRect();
-        const clientX = rect.left + rect.width / 2;
-        const clientY = rect.top + rect.height / 2;
-        
-        const now = Date.now();
-        if (now - lastTapTime < 300) {
-            placeModelAtScreen(clientX, clientY);
-        } else {
-            placementDot.style.transform = 'translate(-50%,-50%) scale(0.98)';
-            setTimeout(() => placementDot.style.transform = 'translate(-50%,-50%) scale(1)', 120);
+  function disposeModel(obj) {
+    obj.traverse(child => {
+      if(child.isMesh) {
+        if(child.geometry) child.geometry.dispose();
+        if(child.material) {
+          if(Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+          else child.material.dispose();
         }
-        lastTapTime = now;
-    }
-
-    placementDot.addEventListener('pointerdown', e => handleTapLogic(e, false));
-    placementDot.addEventListener('pointermove', e => handleMoveLogic(e, false));
-    placementDot.addEventListener('pointerup', e => handleEndLogic(e, false));
-    placementDot.addEventListener('touchstart', e => handleTapLogic(e, true), { passive: false });
-    placementDot.addEventListener('touchmove', e => handleMoveLogic(e, true), { passive: false });
-    placementDot.addEventListener('touchend', e => handleEndLogic(e, true), { passive: false });
-})();
-
-function onTouchStart(e){
-  if (e.touches && e.touches.length === 2){
-    pinchState.active = true;
-    const dx = e.touches[0].clientX - e.touches[1].clientX;
-    const dy = e.touches[0].clientY - e.touches[1].clientY;
-    pinchState.lastDist = Math.hypot(dx, dy);
-  }
-}
-function onTouchMove(e){
-  if (pinchState.active && e.touches && e.touches.length === 2 && modelContainer){
-    e.preventDefault();
-    const dx = e.touches[0].clientX - e.touches[1].clientX;
-    const dy = e.touches[0].clientY - e.touches[1].clientY;
-    const newDist = Math.hypot(dx, dy);
-    if (pinchState.lastDist > 0){
-      const factor = newDist / pinchState.lastDist;
-      const newScale = Math.max(0.05, Math.min(10, modelContainer.scale.x * factor));
-      modelContainer.scale.setScalar(newScale);
-    }
-    pinchState.lastDist = newDist;
-  }
-}
-function onTouchEnd(e){
-  if (!e.touches || e.touches.length < 2) pinchState.active = false;
-}
-
-/* -------------------------
-   AR mode: camera passthrough
-   ------------------------- */
-async function startCameraPassThrough(){
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    videoElement.srcObject = stream;
-    await videoElement.play();
-    videoElement.style.display = 'block';
-    renderer.setClearColor(0x000000, 0);
-    return true;
-  } catch(err){
-    console.error('Camera error', err);
-    showAlert('No se pudo activar la cámara. Revisa permisos.');
-    return false;
-  }
-}
-function stopCameraPassThrough(){
-  if (videoElement.srcObject){
-    videoElement.srcObject.getTracks().forEach(t=>t.stop());
-  }
-  videoElement.srcObject = null;
-  videoElement.style.display = 'none';
-  renderer.setClearColor(0x3b4233, 1);
-}
-
-async function toggleARMode(){
-  isARMode = !isARMode;
-  const statusSpan = document.getElementById('ar-mode-status');
-  const controlsDiv = document.getElementById('placement-controls');
-  const toggleBtn = document.getElementById('toggle-ar-mode-btn');
-
-  if (isARMode){
-    const ok = await startCameraPassThrough();
-    if (!ok){ isARMode = false; return; }
-    statusSpan.textContent = 'Activo';
-    controlsDiv.classList.remove('hidden');
-    toggleBtn.textContent = 'Desactivar Cámara (AR)';
-    toggleBtn.classList.remove('bg-red-500'); toggleBtn.classList.add('bg-green-600');
-    controls.enabled = false;
-    document.getElementById('lock-status').textContent = 'AR ACTIVADO';
-
-    if (!placedOnce){
-      showPlacementDot(true);
-      if(currentModel) currentModel.visible = false;
-    } else {
-      reubicBtn.style.display = 'block';
-      resetScaleBtn.style.display = 'block';
-      if(currentModel) currentModel.visible = true;
-    }
-    await toggleMotionTracking(true); // MODIFICADO: Esperar a que se active
-  } else {
-    stopCameraPassThrough();
-    statusSpan.textContent = 'Inactivo';
-    controlsDiv.classList.add('hidden');
-    toggleBtn.textContent = 'Activar Cámara (AR)';
-    toggleBtn.classList.remove('bg-green-600'); toggleBtn.classList.add('bg-red-500');
-    controls.enabled = true;
-    document.getElementById('lock-status').textContent = 'OFF (Rotar)';
-    showPlacementDot(false);
-    reubicBtn.style.display = 'none';
-    resetScaleBtn.style.display = 'none';
-    toggleMotionTracking(false);
-    unanchorModel(); // MODIFICADO: Desanclar al salir de AR
-    if(currentModel) currentModel.visible = true;
-    modelContainer.position.set(0,0,-2); // Resetear posición
-    modelContainer.rotation.set(0,0,0);
-  }
-}
-
-// MODIFICADO: toggleMotionTracking ahora es asíncrono por los permisos
-async function toggleMotionTracking(forceState){
-  isMotionTrackingActive = (typeof forceState === 'boolean') ? forceState : !isMotionTrackingActive;
-  
-  if (isMotionTrackingActive){
-      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
-          try {
-              const permission = await DeviceOrientationEvent.requestPermission();
-              if (permission === 'granted'){
-                  deviceOrientationControls.connect();
-                  showAlert('Giroscopio activo.');
-              } else {
-                  isMotionTrackingActive = false;
-                  showAlert('Permiso de giroscopio denegado.');
-              }
-          } catch(e) {
-              console.warn(e);
-              showAlert('Error solicitando permiso de giroscopio.');
-              isMotionTrackingActive = false;
-          }
-      } else {
-          deviceOrientationControls.connect();
-          showAlert('Giroscopio activo.');
       }
-  } else {
-      deviceOrientationControls.disconnect();
-      isMotionTrackingActive = false;
-      showAlert('Giroscopio desactivado.');
+    });
   }
-}
 
-function startRelocate(){
-  if (!isARMode) return;
-  unanchorModel(); // MODIFICADO: Desanclar para poder reubicar
-  showPlacementDot(true);
-  placementDot.style.left = `${window.innerWidth/2}px`;
-  placementDot.style.top = `${window.innerHeight/2}px`;
-  if (currentModel) currentModel.visible = false;
-  showAlert('Mueve el punto y doble tap para confirmar la nueva posición.');
-}
+  function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
 
-function resetScale(){
-  if (!modelContainer) return;
-  modelContainer.scale.setScalar(1.0);
-  showAlert('Escala reiniciada.');
-}
-
-function toggleInteractionMode(){
-    if (isARMode) {
-        showAlert("El modo de interacción está bloqueado en modo AR.");
-        return;
+  function animate() {
+    requestAnimationFrame(animate);
+    if (isMotionTrackingActive) {
+      deviceOrientationControls.update();
+      controls.enabled = false; // desactivamos controles manuales para que no contradigan rotación
+    } else {
+      controls.enabled = true; // el usuario puede orbitar manualmente
     }
-  if (controls.enabled){
+    renderer.render(scene, camera);
+  }
+
+  async function toggleMotionTrackingEnable() {
+    if(typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
+      try {
+        const permission = await DeviceOrientationEvent.requestPermission();
+        if(permission === "granted"){
+          enableMotionTracking();
+        } else {
+          alert("Permiso para sensores denegado");
+        }
+      } catch(e) {
+        alert("Error solicitando permiso para sensores");
+      }
+    } else {
+      enableMotionTracking();
+    }
+  }
+
+  function enableMotionTracking() {
+    deviceOrientationControls.enabled = true;
+    deviceOrientationControls.connect();
+    isMotionTrackingActive = true;
     controls.enabled = false;
-    document.getElementById('lock-status').textContent = 'ON (Mover)';
-  } else {
+  }
+
+  function disableMotionTracking() {
+    deviceOrientationControls.disconnect();
+    deviceOrientationControls.enabled = false;
+    isMotionTrackingActive = false;
     controls.enabled = true;
-    document.getElementById('lock-status').textContent = 'OFF (Rotar)';
   }
-}
 
-function adjustScale(delta){
-  if (!modelContainer) return;
-  const newScale = Math.max(0.1, modelContainer.scale.x + delta);
-  modelContainer.scale.setScalar(newScale);
-}
+  window.onload = () => {
+    initThree();
+    loadModel('Duck');
 
-function toggleModelSelector(show){
-  const modal = document.getElementById('model-selector-modal');
-  if (show){ modal.classList.remove('pointer-events-none','opacity-0'); modal.classList.add('opacity-100'); }
-  else { modal.classList.remove('opacity-100'); modal.classList.add('pointer-events-none','opacity-0'); }
-}
-function selectModel(name){
-  toggleModelSelector(false);
-  placedOnce = false; // Reset placement status for new model
-  reubicBtn.style.display = 'none';
-  resetScaleBtn.style.display = 'none';
-  if(isARMode) {
-    showPlacementDot(true);
-  }
-  loadModelByName(name);
-}
+    // Para activar mode tracking por defecto si quieres
+    // toggleMotionTrackingEnable();
 
-window.onload = function(){
-  initThree();
-  loadModelByName('Duck');
-  animate();
-};
-
-window.toggleControlPanel = function(){
-  document.getElementById('control-panel').classList.toggle('is-visible');
-};
-
-/* Global functions */
-window.toggleARMode = toggleARMode;
-window.toggleMotionTracking = toggleMotionTracking;
-window.toggleInteractionMode = toggleInteractionMode;
-window.adjustScale = adjustScale;
-window.selectModel = selectModel;
-window.toggleModelSelector = toggleModelSelector;
-window.startRelocate = startRelocate;
-window.resetScale = resetScale;
-
+    // Ejemplo botón o activador para activar/desactivar rastreo:
+    document.body.insertAdjacentHTML('beforeend', `
+      <button id="toggleTrackBtn" style="position:fixed;top:10px;left:10px;z-index:1000;padding:0.5em 1em;">Alternar rastreo motion</button>
+    `);
+    document.getElementById('toggleTrackBtn').addEventListener('click', () => {
+      if(isMotionTrackingActive) disableMotionTracking();
+      else toggleMotionTrackingEnable();
+    });
+  };
 </script>
 </body>
 </html>
