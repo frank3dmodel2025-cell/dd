@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Nike Air Max | Store</title>
+
+    <!-- Fonts & Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+
+    <!-- Google Model Viewer -->
+    <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.4.0/model-viewer.min.js"></script>
+
+    <style>
+        :root {
+            /* Variable Colors - Updated via JS */
+            --primary-accent: #20E0D0;
+            --primary-dark: #111111;
+            --text-gray: #888888;
+            --bg-white: #FFFFFF;
+            --font-main: 'Manrope', sans-serif;
+            --shoe-filter: none;
+            /* Used to colorize the shoe */
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-main);
+            background-color: #F5F5F7;
+            color: var(--primary-dark);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Mobile Container Frame */
+        .mobile-frame {
+            width: 100%;
+            max-width: 414px;
+            height: 100%;
+            max-height: 850px;
+            background: var(--bg-white);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 40px 80px rgba(0, 0, 0, 0.15);
+            border-radius: 40px;
+            transition: all 0.3s ease;
+        }
+
+        @media (max-width: 480px) {
+            .mobile-frame {
+                max-width: 100%;
+                max-height: 100%;
+                border-radius: 0;
+            }
+
+            body {
+                background: white;
+            }
+        }
+
+        /* --- Header --- */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px;
+            z-index: 10;
+            flex-shrink: 0;
+        }
+
+        .header-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--primary-dark);
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        h1.header-title {
+            font-size: 1.1rem;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            color: var(--primary-dark);
+        }
+
+        /* --- Hero Section (Grid Layout) --- */
+        .hero-section {
+            position: relative;
+            flex: 1;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            /* Allow scrolling if content is tall */
+            scrollbar-width: none;
+        }
+
+        /* Background Blob Layer */
+        .blob-layer {
+            position: absolute;
+            top: 20px;
+            left: 0;
+            width: 100%;
+            height: 400px;
+            display: flex;
+            justify-content: center;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .accent-blob {
+            width: 85%;
+            height: 100%;
+            background-color: var(--primary-accent);
+            border-radius: 60px 20px 60px 60px;
+            position: relative;
+            transition: background-color 0.5s ease;
+        }
+
+        .brand-logo {
+            position: absolute;
+            bottom: 40px;
+            left: 30px;
+            color: rgba(255, 255, 255, 0.4);
+            font-weight: 800;
+            font-size: 3rem;
+            transform: rotate(-90deg);
+            transform-origin: left bottom;
+            letter-spacing: 2px;
+        }
+
+        /* Interactive Grid Layer */
+        .product-stage {
+            z-index: 1;
+            display: grid;
+            grid-template-columns: 60px 1fr 60px;
+            /* Side buttons, Image, Thumbnails */
+            align-items: center;
+            /* Vertically center everything */
+            margin-top: 40px;
+            min-height: 320px;
+            padding: 0 16px;
+        }
+
+        /* Left Controls */
+        .controls-left {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .float-btn {
+            width: 44px;
+            height: 44px;
+            border-radius: 14px;
+            background: var(--primary-accent);
+            color: #fff;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 0.9rem;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            /* Neutral shadow */
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .float-btn.heart {
+            background: transparent;
+            border: 2px solid var(--primary-accent);
+            color: var(--primary-accent);
+            box-shadow: none;
+            transition: all 0.3s;
+        }
+
+        /* Main Image Area */
+        .product-image-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        .main-image {
+            width: 100%;
+            max-width: 260px;
+            /* Safe size */
+            height: auto;
+            filter: drop-shadow(0 20px 30px rgba(0, 0, 0, 0.25)) var(--shoe-filter);
+            /* Dynamic Color Filter */
+            mix-blend-mode: multiply;
+            transition: filter 0.5s ease;
+        }
+
+        /* Right Thumbnails */
+        .controls-right {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .thumb {
+            width: 48px;
+            height: 48px;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 12px;
+            border: 2px solid transparent;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.2s;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .thumb::after {
+            content: '';
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        .thumb.active {
+            border-color: var(--primary-dark);
+            transform: scale(1.1);
+        }
+
+        /* Specs List */
+        .specs-list {
+            padding: 24px 32px;
+            margin-top: 10px;
+            z-index: 2;
+        }
+
+        .spec-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .spec-item:last-child {
+            border-bottom: none;
+        }
+
+        .spec-label {
+            font-weight: 800;
+            font-size: 0.9rem;
+            color: var(--primary-accent);
+            text-shadow: 0 0 1px rgba(0, 0, 0, 0.1);
+            text-transform: uppercase;
+        }
+
+        .spec-value {
+            font-size: 0.8rem;
+            color: var(--text-gray);
+            font-weight: 600;
+            text-transform: uppercase;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* --- Bottom Bar --- */
+        .bottom-bar {
+            padding: 24px 32px 32px 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #fff;
+            position: relative;
+            z-index: 10;
+        }
+
+        .price {
+            font-size: 1.8rem;
+            font-weight: 800;
+            color: var(--primary-dark);
+            letter-spacing: -0.5px;
+        }
+
+        .btn-add {
+            background-color: var(--primary-dark);
+            color: #fff;
+            border: none;
+            padding: 16px 32px;
+            border-radius: 16px;
+            font-weight: 800;
+            font-size: 0.9rem;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+            transition: transform 0.2s;
+        }
+
+        .btn-add:active {
+            transform: scale(0.96);
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="mobile-frame">
+
+        <header>
+            <button class="header-btn"><span class="material-icons-round">arrow_back</span></button>
+            <h1 class="header-title" id="product-title">AIR MAX 270</h1>
+            <button class="header-btn"><span class="material-icons-round">grid_view</span></button>
+        </header>
+
+        <div class="hero-section">
+            <!-- Background Shape -->
+            <div class="blob-layer">
+                <div class="accent-blob">
+                    <div class="brand-logo">NIKE</div>
+                </div>
+            </div>
+
+            <!-- Main Interactive & Grid Layout -->
+            <div class="product-stage">
+                <!-- Left: Actions -->
+                <div class="controls-left">
+                    <button class="float-btn">3D</button>
+                    <button class="float-btn heart">
+                        <span class="material-icons-round" style="font-size: 20px;">favorite_border</span>
+                    </button>
+                </div>
+
+                <!-- Center: Shoe -->
+                <div class="product-image-container">
+                    <img src="assets/shoe.png" alt="Nike Shoe" class="main-image" id="main-shoe">
+                </div>
+
+                <!-- Right: Catalog Thumbnails -->
+                <div class="controls-right" id="thumbs-container">
+                    <!-- Injected by JS -->
+                </div>
+            </div>
+
+            <!-- Specifications -->
+            <div class="specs-list">
+                <div class="spec-item">
+                    <span class="spec-label">TECHNOLOGY</span>
+                    <span class="spec-value" id="spec-tech">MAX AIR 270</span>
+                </div>
+                <div class="spec-item">
+                    <span class="spec-label">UPPER</span>
+                    <span class="spec-value">ENGINEERED MESH</span>
+                </div>
+                <div class="spec-item">
+                    <span class="spec-label">SOLE</span>
+                    <span class="spec-value">DUAL DENSITY</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="bottom-bar">
+            <div class="price"><span>$</span><span id="price-value">129.99</span></div>
+            <button class="btn-add" style="background-color: var(--primary-accent); color: white;">ADD TO CART</button>
+        </div>
+
+    </div>
+
+    <script>
+        // --- Catalog Data ---
+        const products = [
+            {
+                id: 0,
+                name: "AIR MAX 270",
+                price: "129.99",
+                color: "#20E0D0", // Teal
+                filter: "none", // Original image is Teal
+                tech: "MAX AIR UNIT"
+            },
+            {
+                id: 1,
+                name: "AIR MAX RED",
+                price: "135.00",
+                color: "#FF3B30", // Red
+                filter: "hue-rotate(180deg) brightness(1.2) saturate(1.2)", // Simulating red
+                tech: "CRIMSON SOLE"
+            },
+            {
+                id: 2,
+                name: "AIR MAX VOID",
+                price: "140.00",
+                color: "#9C27B0", // Purple
+                filter: "hue-rotate(240deg) saturate(1.5)", // Simulating purple
+                tech: "VIOLET CUSHION"
+            },
+            {
+                id: 3,
+                name: "AIR MAX VOLT",
+                price: "145.99",
+                color: "#D4E157", // Lime/Volt
+                filter: "hue-rotate(60deg) brightness(1.1)", // Simulating yellow/lime
+                tech: "VOLT ENERGY"
+            }
+        ];
+
+        // --- Elements ---
+        const root = document.documentElement;
+        const mainNodes = {
+            title: document.getElementById('product-title'),
+            image: document.getElementById('main-shoe'),
+            price: document.getElementById('price-value'),
+            specTech: document.getElementById('spec-tech'),
+            thumbsContainer: document.getElementById('thumbs-container')
+        };
+
+        // --- Init ---
+        function init() {
+            renderThumbs();
+            selectProduct(0);
+        }
+
+        // --- Render Thumbnails ---
+        function renderThumbs() {
+            mainNodes.thumbsContainer.innerHTML = '';
+            products.forEach((prod, index) => {
+                const btn = document.createElement('div');
+                btn.className = 'thumb';
+                btn.style.color = prod.color; // Used by css ::after for the dot color
+                btn.onclick = () => selectProduct(index);
+                mainNodes.thumbsContainer.appendChild(btn);
+            });
+        }
+
+        // --- Select Product Logic ---
+        function selectProduct(index) {
+            const prod = products[index];
+
+            // Update Variables
+            root.style.setProperty('--primary-accent', prod.color);
+            root.style.setProperty('--shoe-filter', prod.filter);
+
+            // Update Content
+            mainNodes.title.innerText = prod.name;
+            mainNodes.price.innerText = prod.price;
+            mainNodes.specTech.innerText = prod.tech;
+
+            // Animate Image (Subtle pop)
+            mainNodes.image.style.transform = "scale(0.95)";
+            setTimeout(() => {
+                mainNodes.image.style.transform = "scale(1)";
+            }, 200);
+
+            // Update Active Thumb
+            const allThumbs = document.querySelectorAll('.thumb');
+            allThumbs.forEach((t, i) => {
+                if (i === index) t.classList.add('active');
+                else t.classList.remove('active');
+            });
+        }
+
+        init();
+    </script>
+</body>
+
+</html>
